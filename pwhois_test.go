@@ -30,6 +30,11 @@ func TestSetDefaultValues(t *testing.T) {
 			got:      fmt.Sprintf("%v", server.Port),
 			expected: "43",
 		},
+		{
+			name:     "MaxBatchSize",
+			got:      fmt.Sprintf("%v", server.BatchMaxSize),
+			expected: "500",
+		},
 	}
 
 	for _, c := range cases {
@@ -59,6 +64,9 @@ func generateRandomIP(n int) []string {
 
 // Test formatting pwhois query
 func TestFormatLookupQuery(t *testing.T) {
+
+	server := new(WhoisServer)
+	server.SetDefaultValues()
 
 	overCapactitySlice := generateRandomIP(600)
 
@@ -90,13 +98,13 @@ func TestFormatLookupQuery(t *testing.T) {
 			name:     "OverMaxValues",
 			values:   overCapactitySlice,
 			expected: "",
-			err:      fmt.Errorf("values slice larger than maximum: %v", BatchMaxSize),
+			err:      fmt.Errorf("values slice larger than maximum: %v", server.BatchMaxSize),
 		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := formatLookupQuery(c.values)
+			got, err := server.FormatLookupQuery(c.values)
 			if c.err != nil {
 				t.Log(c.err)
 				if fmt.Sprintf("%v", err) != fmt.Sprintf("%v", c.err) {
@@ -131,6 +139,7 @@ func TestLookup(t *testing.T) {
 	server := new(WhoisServer)
 	server.SetDefaultValues()
 	err := server.Connect()
+
 	if err != nil {
 		t.Errorf("got %v", err)
 	}
@@ -147,7 +156,7 @@ func TestLookup(t *testing.T) {
 	values = append(values, value1)
 	values = append(values, value2)
 	values = append(values, value3)
-	query, err := formatLookupQuery(values)
+	query, err := server.FormatLookupQuery(values)
 	if err != nil {
 		t.Fatal(err)
 	}

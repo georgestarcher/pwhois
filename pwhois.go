@@ -27,14 +27,12 @@ const BatchStart string = "begin\n"
 // Query string for batch query end
 const BatchEnd string = "end\n"
 
-// Max size of a batch query
-const BatchMaxSize int = 500
-
 // Whois server object
 type WhoisServer struct {
-	Server     string `default:"whois.pwhois.org"`
-	Port       int    `default:"43"`
-	Connection net.Conn
+	Server       string `default:"whois.pwhois.org"`
+	Port         int    `default:"43"`
+	BatchMaxSize int    `default:"500"`
+	Connection   net.Conn
 }
 
 // Return full DNS server socket Aadress
@@ -85,7 +83,7 @@ func removeDuplicate[T string | int](sliceList []T) []T {
 // Return string formatted query.
 // Takes slice of IP address values.
 // Provide slice of len 1 for single value.
-func formatLookupQuery(values []string) (string, error) {
+func (server *WhoisServer) FormatLookupQuery(values []string) (string, error) {
 
 	queryString := fmt.Sprintf("app=\"%s\"\n", AppName)
 	var checkedValues []string
@@ -103,8 +101,8 @@ func formatLookupQuery(values []string) (string, error) {
 	// check slice sizes and build query string
 	if len(deduplicatedValues) == 0 {
 		return "", errors.New("no valid values provided")
-	} else if len(deduplicatedValues) > BatchMaxSize {
-		return "", fmt.Errorf("values slice larger than maximum: %v", BatchMaxSize)
+	} else if len(deduplicatedValues) > server.BatchMaxSize {
+		return "", fmt.Errorf("values slice larger than maximum: %v", server.BatchMaxSize)
 	} else if len(deduplicatedValues) == 1 {
 		queryString = queryString + fmt.Sprintf("%s\n", deduplicatedValues[0])
 		return queryString, nil
