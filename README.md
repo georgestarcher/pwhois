@@ -1,6 +1,16 @@
 # pwhois
 
-A Go (golang) module for looking up [PWHOIS](https://pwhois.org/).
+A Go (golang) module for looking up from [PWHOIS](https://pwhois.org/).
+
+Written by George Starcher with OpenAI ChatGPT v3.5 Jan 6rd, 2024
+  * https://help.openai.com/en/articles/6825453-chatgpt-release-notes
+  * https://chat.openai.com/share/f664e12a-e26f-4a64-96e2-8ecdf9008938
+
+Referenced Original whob source:
+* [whob source code](https://pwhois.org/lft/)
+
+MIT license, check license.txt for more information
+All text above must be included in any redistribution
 
 ## Installation
 
@@ -31,3 +41,14 @@ You could break your list of IPs into different value lists, add another channel
 TBD
 
 ```
+## pwhois Servers
+
+Source: whob.c from the [whob source code](https://pwhois.org/lft/)
+
+* whois.pwhois.org
+* whois.ra.net
+* whois.cymru.com
+* whois.arin.net
+* whois.apnic.net
+* whois.ripe.net
+* riswhois.ripe.net
