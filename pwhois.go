@@ -172,9 +172,12 @@ func parseResponseBytes(response []byte) ([]WhoIs, error) {
 	var responseWhoIs []WhoIs
 	responseMap := make(map[string]string)
 
+	// Convert slice of bytes to string
 	responseString := string(response[:])
 	responseRecords := strings.Split(responseString, "\n\n")
 
+	// Break the string records apart and into the WhoIs structs
+	// One record will be returned as a slice of one WhoIs member
 	if len(response) == 0 || len(responseRecords) == 0 {
 		return nil, fmt.Errorf("no records returned")
 	}
@@ -222,11 +225,13 @@ func (server WhoisServer) Lookup(query string, c chan LookupResponse) {
 
 	var Answer []WhoIs
 
+	// Check for pwhois server connection
 	if server.Connection == nil {
 		c <- LookupResponse{Answer, errors.New("execute Connect method to establish connection")}
 		return
 	}
 
+	// Post query to pwhois server
 	address_bytes := []byte(query)
 	_, err := server.Connection.Write(address_bytes)
 	if err != nil {
@@ -234,6 +239,7 @@ func (server WhoisServer) Lookup(query string, c chan LookupResponse) {
 		return
 	}
 
+	// Receive query response from pwhois server
 	var buf bytes.Buffer
 	_, err = io.Copy(&buf, server.Connection)
 	if err != nil {
@@ -241,6 +247,14 @@ func (server WhoisServer) Lookup(query string, c chan LookupResponse) {
 		return
 	}
 
+	// Check for daily limit and raise error
+	if strings.Contains(buf.String(), "query limit exceeded") {
+		var errString string
+		errString = strings.Replace(buf.String(), "Error: Error: ", errString, 1)
+		c <- LookupResponse{Answer, fmt.Errorf("%v", errString)}
+		return
+	}
+	// Parse the query response into our response and return
 	Answer, err = parseResponseBytes(buf.Bytes())
 	if err != nil {
 		c <- LookupResponse{Answer, err}

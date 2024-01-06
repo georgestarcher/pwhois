@@ -60,8 +60,6 @@ func generateRandomIP(n int) []string {
 // Test formatting pwhois query
 func TestFormatLookupQuery(t *testing.T) {
 
-	fmt.Println(generateRandomIP(2))
-
 	overCapactitySlice := generateRandomIP(600)
 
 	cases := []struct {
@@ -89,7 +87,7 @@ func TestFormatLookupQuery(t *testing.T) {
 			err:      nil,
 		},
 		{
-			name:     "501Values",
+			name:     "OverMaxValues",
 			values:   overCapactitySlice,
 			expected: "",
 			err:      fmt.Errorf("values slice larger than maximum: %v", BatchMaxSize),
