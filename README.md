@@ -12,6 +12,7 @@ go get github.com/georgestarcher/pwhois
 
 1. The maximum batch query size is 500 IP addresses. Going larger or querying too frequently could get you rate limited.
 2. Watch for error `ERROR: Unable to perform lookup; Daily query limit exceeded.` raised from the Lookup method. You have been rate limited by the phwois server.
+3. You can consider `server.MaxBatchSize = 100` or other value to protect your daily limit. `500` is the default.
 
 In your Go app you can do something like the below. 
 
