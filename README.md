@@ -1,6 +1,6 @@
-# pwhois
+# pwhois [![Build Status](https://github.com/georgestarcher/pwhois/workflows/Go/badge.svg)](https://github.com/georgestarcher/pwhois/actions)
 
-A Go (golang) module for looking up from [PWHOIS](https://pwhois.org/).
+A Go (golang) module for looking up information from [PWHOIS](https://pwhois.org/).
 
 Written by George Starcher with OpenAI ChatGPT v3.5 Jan 6rd, 2024
   * https://help.openai.com/en/articles/6825453-chatgpt-release-notes
