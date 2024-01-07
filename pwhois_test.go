@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// Test Setup and Load Report from File
+// Test server object defaults
 func TestSetDefaultValues(t *testing.T) {
 
 	server := new(WhoisServer)
@@ -62,8 +62,8 @@ func generateRandomIP(n int) []string {
 	return returnAddresses
 }
 
-// Test formatting pwhois query
-func TestIPFormatLookupQuery(t *testing.T) {
+// Test formatting ip pwhois query
+func TestFormatIpQuery(t *testing.T) {
 
 	server := new(WhoisServer)
 	server.SetDefaultValues()
@@ -104,7 +104,7 @@ func TestIPFormatLookupQuery(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := server.FormatIpLookupQuery(c.values)
+			got, err := server.FormatIpQuery(c.values)
 			if c.err != nil {
 				t.Log(c.err)
 				if fmt.Sprintf("%v", err) != fmt.Sprintf("%v", c.err) {
@@ -120,7 +120,7 @@ func TestIPFormatLookupQuery(t *testing.T) {
 	}
 }
 
-// Test Connection to default pwhois server
+// Test connection to default pwhois server
 func TestConnect(t *testing.T) {
 
 	server := new(WhoisServer)
@@ -133,7 +133,7 @@ func TestConnect(t *testing.T) {
 	}
 }
 
-// Test IP lookup against default pwhois
+// Test ip lookup against default pwhois
 func TestIpLookup(t *testing.T) {
 
 	server := new(WhoisServer)
@@ -156,7 +156,7 @@ func TestIpLookup(t *testing.T) {
 	values = append(values, value1)
 	values = append(values, value2)
 	values = append(values, value3)
-	query, err := server.FormatIpLookupQuery(values)
+	query, err := server.FormatIpQuery(values)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,8 +181,8 @@ func TestIpLookup(t *testing.T) {
 	}
 }
 
-// Test Setup and Load Report from File
-func TestAsnFormatLookupQuery(t *testing.T) {
+// Test formatting routeview pwhois query
+func TestFormatAsnQuery(t *testing.T) {
 
 	server := new(WhoisServer)
 	server.SetDefaultValues()
@@ -209,7 +209,7 @@ func TestAsnFormatLookupQuery(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := server.FormatAsnLookupQuery(c.value)
+			got, err := server.FormatRouteViewQuery(c.value)
 			if c.err != nil {
 				t.Log(c.err)
 				if fmt.Sprintf("%v", err) != fmt.Sprintf("%v", c.err) {
@@ -225,7 +225,7 @@ func TestAsnFormatLookupQuery(t *testing.T) {
 	}
 }
 
-// Test ASN lookup against default pwhois
+// Test routeview lookup against default pwhois
 func TestLookupRouteView(t *testing.T) {
 
 	server := new(WhoisServer)
@@ -239,11 +239,11 @@ func TestLookupRouteView(t *testing.T) {
 	// process lookup of values
 	var wg sync.WaitGroup
 
-	c := make(chan AsnLookupResponse)
+	c := make(chan BGPLookupResponse)
 
 	value := "3356"
 
-	query, err := server.FormatAsnLookupQuery(value)
+	query, err := server.FormatRouteViewQuery(value)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,6 +261,92 @@ func TestLookupRouteView(t *testing.T) {
 
 	got := len(asnAnswer.Response.Routes[:2])
 	want := 2
+
+	if got != want {
+		t.Errorf("Response Count: got %v, wanted %v", got, want)
+	}
+}
+
+// Test formatting registry pwhois query
+func TestFormatRegistryQuery(t *testing.T) {
+
+	server := new(WhoisServer)
+	server.SetDefaultValues()
+
+	cases := []struct {
+		name     string
+		value    string
+		expected string
+		err      error
+	}{
+		{
+			name:     "InvalidValue",
+			value:    "",
+			expected: "",
+			err:      fmt.Errorf("no valid value provided"),
+		},
+		{
+			name:     "ValidAsn",
+			value:    "1236",
+			expected: "app=\"GO pwhois Module\" registry source-as=1236\n",
+			err:      nil,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := server.FormatRegistryQuery(c.value)
+			if c.err != nil {
+				t.Log(c.err)
+				if fmt.Sprintf("%v", err) != fmt.Sprintf("%v", c.err) {
+					t.Errorf("Expected %v, got %v", c.err, err)
+				}
+				t.Logf("%v", err)
+			}
+
+			if got != c.expected {
+				t.Errorf("Expected %v, got %v", c.expected, got)
+			}
+		})
+	}
+}
+
+// Test routeview lookup against default pwhois
+func TestLookupRegistry(t *testing.T) {
+
+	server := new(WhoisServer)
+	server.SetDefaultValues()
+	err := server.Connect()
+
+	if err != nil {
+		t.Errorf("got %v", err)
+	}
+
+	// process lookup of values
+	var wg sync.WaitGroup
+
+	c := make(chan RegistryLookupResponse)
+
+	value := "7922"
+
+	query, err := server.FormatRegistryQuery(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		server.LookupRegistry(value, query, c)
+	}()
+
+	registryAnswer := <-c
+	if registryAnswer.Error != nil {
+		t.Fatalf("ERROR: %v\n", registryAnswer.Error)
+	}
+
+	got := registryAnswer.Response.Registry.OrgName
+	want := "Comcast Cable Communications, LLC"
 
 	if got != want {
 		t.Errorf("Response Count: got %v, wanted %v", got, want)
