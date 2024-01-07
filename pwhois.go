@@ -21,11 +21,24 @@ const SocketKeepAlive int = 30
 // App Name for this module similar to HTTP User Agent in use
 const AppName string = "GO pwhois Module"
 
-// Query string for batch query start
+// Query string for ip batch query start
 const BatchStart string = "begin\n"
 
-// Query string for batch query end
+// Query string for ip batch query end
 const BatchEnd string = "end\n"
+
+// Deduplicate values
+func removeDuplicate[T string | int](sliceList []T) []T {
+	allKeys := make(map[T]bool)
+	list := []T{}
+	for _, item := range sliceList {
+		if _, value := allKeys[item]; !value {
+			allKeys[item] = true
+			list = append(list, item)
+		}
+	}
+	return list
+}
 
 // Whois server object
 type WhoisServer struct {
@@ -40,13 +53,7 @@ func (server *WhoisServer) ServerAddressString() string {
 	return fmt.Sprintf("%s:%d", server.Server, server.Port)
 }
 
-// Channel return object for lookup response
-type IpLookupResponse struct {
-	Response []WhoIs
-	Error    error
-}
-
-// Whois lookup response object
+// Whois record object
 type WhoIs struct {
 	IP                  string    `json:"ip"`
 	OriginAS            string    `json:"origin_asn"`
@@ -66,6 +73,12 @@ type WhoIs struct {
 	RouteOriginatedTS   int64     `json:"route_orginated_ts"`
 }
 
+// Channel return object for ip query response
+type IpLookupResponse struct {
+	Response []WhoIs
+	Error    error
+}
+
 // BGP Route object
 type BGPRoute struct {
 	Prefix         string    `json:"prefix"`
@@ -76,10 +89,16 @@ type BGPRoute struct {
 	ASPath         []int     `json:"as_path"`
 }
 
-// ASN lookup response object
-type ASN struct {
+// BGP routeview object
+type BGPRoutes struct {
 	Asn    string     `json:"asn"`
 	Routes []BGPRoute `json:"routes"`
+}
+
+// Channel return object for routeview query response
+type BGPLookupResponse struct {
+	Response BGPRoutes
+	Error    error
 }
 
 // Parse BGP route data from string
@@ -111,7 +130,6 @@ func parseBGPData(data string) []BGPRoute {
 
 		routes = append(routes, route)
 	}
-
 	return routes
 }
 
@@ -125,51 +143,49 @@ func parseASPath(asPathFields []string) []int {
 	return asPath
 }
 
-/*
-	Returns string formatted ASN lookp query.
-
-args:
-
->values: string value of the ASN to query
-*/
-func (asn *ASN) FormatAsnLookupQuery(value string) (string, error) {
-
-	if len(value) == 0 {
-		return "", errors.New("no valid value provided")
-	}
-	value = strings.TrimPrefix(value, "AS")
-	queryString := fmt.Sprintf("app=\"%s\"  routeview source-as=%s", AppName, value)
-
-	return queryString, nil
+// BGP routeview object
+type RegistryRecord struct {
+	Asn      string   `json:"asn"`
+	Registry Registry `json:"routes"`
 }
 
-// Channel return object for lookup response
-type AsnLookupResponse struct {
-	Response ASN
+// Channel return object for registry query response
+type RegistryLookupResponse struct {
+	Response RegistryRecord
 	Error    error
 }
 
-// Deduplicate values
-func removeDuplicate[T string | int](sliceList []T) []T {
-	allKeys := make(map[T]bool)
-	list := []T{}
-	for _, item := range sliceList {
-		if _, value := allKeys[item]; !value {
-			allKeys[item] = true
-			list = append(list, item)
-		}
-	}
-	return list
+// ASN Registry record object
+type Registry struct {
+	OrgRecord    string    `json:"org_record"`
+	OrgID        string    `json:"org_id"`
+	OrgName      string    `json:"org_name"`
+	CanAllocate  bool      `json:"can_allocate"`
+	Source       string    `json:"source"`
+	Street1      string    `json:"street_1"`
+	PostalCode   float64   `json:"postal_code"`
+	City         string    `json:"city"`
+	Region       string    `json:"region"`
+	Country      string    `json:"country"`
+	CountryCode  string    `json:"country_code"`
+	RegisterDate time.Time `json:"register_date"`
+	UpdateDate   time.Time `json:"update_date"`
+	CreateDate   time.Time `json:"create_date"`
+	ModifyDate   time.Time `json:"modify_date"`
+	AdminHandle0 string    `json:"admin_handle_0"`
+	AbuseHandle0 string    `json:"abuse_handle_0"`
+	TechHandle0  string    `json:"tech_handle_0"`
+	Comment      string    `json:"comment_handle_0"`
 }
 
 /*
-	Returns string formatted IP(s) lookp query.
+	Returns string formatted IP(s) query.
 
 args:
 
 >values: slice of strings of IP address(es)
 */
-func (server *WhoisServer) FormatIpLookupQuery(values []string) (string, error) {
+func (server *WhoisServer) FormatIpQuery(values []string) (string, error) {
 
 	queryString := fmt.Sprintf("app=\"%s\"\n", AppName)
 	var checkedValues []string
@@ -198,24 +214,40 @@ func (server *WhoisServer) FormatIpLookupQuery(values []string) (string, error) 
 		queryString = queryString + fmt.Sprintf("%s\n", value)
 	}
 	queryString = queryString + BatchEnd
-
 	return queryString, nil
 }
 
 /*
-	Returns string formatted ASN lookup query.
+	Returns string formatted routeview query.
 
 args:
 
 >asn: string of the ASN to lookup
 */
-func (server *WhoisServer) FormatAsnLookupQuery(asn string) (string, error) {
+func (server *WhoisServer) FormatRouteViewQuery(asn string) (string, error) {
 
 	if len(asn) == 0 {
 		return "", errors.New("no valid value provided")
 	}
 	asn = strings.TrimPrefix(asn, "AS")
 	queryString := fmt.Sprintf("app=\"%s\" routeview source-as=%s\n", AppName, asn)
+	return queryString, nil
+}
+
+/*
+	Returns string formatted registry query.
+
+args:
+
+>asn: string of the ASN to lookup
+*/
+func (server *WhoisServer) FormatRegistryQuery(asn string) (string, error) {
+
+	if len(asn) == 0 {
+		return "", errors.New("no valid value provided")
+	}
+	asn = strings.TrimPrefix(asn, "AS")
+	queryString := fmt.Sprintf("app=\"%s\" registry source-as=%s\n", AppName, asn)
 
 	return queryString, nil
 }
@@ -260,11 +292,9 @@ func (server *WhoisServer) Connect() error {
 
 	var err error
 	server.Connection, err = whoisDialer.Dial("tcp", server.ServerAddressString())
-
 	if err != nil {
 		return err
 	}
-
 	return nil
 }
 
@@ -316,7 +346,6 @@ func parseIpResponse(response string) ([]WhoIs, error) {
 		responseWhoIs = append(responseWhoIs, whoIsParsedStruct)
 	}
 	return responseWhoIs, nil
-
 }
 
 /*
@@ -368,19 +397,16 @@ func (server WhoisServer) LookupIP(query string, c chan IpLookupResponse) {
 		c <- IpLookupResponse{Answer, err}
 		return
 	}
-
 	c <- IpLookupResponse{Answer, nil}
 }
 
-// Parse response slice of bytes into slice of WhoIs records
-func parseAsnResponse(response string) ([]BGPRoute, error) {
-
+// Parse response string into slice of BGP routing records
+func parseBgpResponse(response string) ([]BGPRoute, error) {
 	if len(response) == 0 {
 		return nil, fmt.Errorf("no records returned")
 
 	}
 	return parseBGPData(response), nil
-
 }
 
 /*
@@ -392,15 +418,15 @@ args:
 
 >query: string is the pwhois query to execute
 
->c: a channel to return an AsnLookupResponse struct
+>c: a channel to return an BGPLookupResponse struct
 */
-func (server WhoisServer) LookupRouteView(asn string, query string, c chan AsnLookupResponse) {
+func (server WhoisServer) LookupRouteView(asn string, query string, c chan BGPLookupResponse) {
 
-	var Answer ASN
+	var Answer BGPRoutes
 
 	// Check for pwhois server connection
 	if server.Connection == nil {
-		c <- AsnLookupResponse{Answer, fmt.Errorf("execute Connect method to establish connection")}
+		c <- BGPLookupResponse{Answer, fmt.Errorf("execute Connect method to establish connection")}
 		return
 	}
 
@@ -408,7 +434,7 @@ func (server WhoisServer) LookupRouteView(asn string, query string, c chan AsnLo
 	address_bytes := []byte(query)
 	_, err := server.Connection.Write(address_bytes)
 	if err != nil {
-		c <- AsnLookupResponse{Answer, err}
+		c <- BGPLookupResponse{Answer, err}
 		return
 	}
 
@@ -416,7 +442,7 @@ func (server WhoisServer) LookupRouteView(asn string, query string, c chan AsnLo
 	var buf bytes.Buffer
 	_, err = io.Copy(&buf, server.Connection)
 	if err != nil {
-		c <- AsnLookupResponse{Answer, err}
+		c <- BGPLookupResponse{Answer, err}
 		return
 	}
 
@@ -424,18 +450,136 @@ func (server WhoisServer) LookupRouteView(asn string, query string, c chan AsnLo
 	if strings.Contains(buf.String(), "query limit exceeded") {
 		var errString string
 		errString = strings.Replace(buf.String(), "Error: Error: ", errString, 1)
-		c <- AsnLookupResponse{Answer, fmt.Errorf("%v", errString)}
+		c <- BGPLookupResponse{Answer, fmt.Errorf("%v", errString)}
 		return
 	}
 
-	routes, err := parseAsnResponse(buf.String())
+	routes, err := parseBgpResponse(buf.String())
 	Answer.Asn = asn
 	Answer.Routes = routes
 
 	if err != nil {
-		c <- AsnLookupResponse{Answer, err}
+		c <- BGPLookupResponse{Answer, err}
 		return
 	}
 
-	c <- AsnLookupResponse{Answer, nil}
+	c <- BGPLookupResponse{Answer, nil}
+}
+
+// SCOOBY
+// Parse response string into slice of WhoIs records
+func parseRegistryResponse(response string) ([]Registry, error) {
+
+	var responseRegistry []Registry
+	responseMap := make(map[string]string)
+	responseRecords := strings.Split(response, "\n\n")
+
+	// Break the records apart and into the WhoIs structs
+	// One record will be returned as a slice of one WhoIs member
+	if len(response) == 0 || len(responseRecords) == 0 {
+		return nil, fmt.Errorf("no records returned")
+	}
+	for _, record := range responseRecords {
+		if len(record) == 0 {
+			continue
+		}
+		lines := strings.Split(record, "\n")
+		for _, line := range lines {
+			if len(line) == 0 {
+				continue
+			}
+			values := strings.Split(line, ": ")
+			responseMap[values[0]] = strings.Trim(values[1], " ")
+			if len(responseMap) == 0 {
+				continue
+			}
+		}
+		var registryParsedStruct Registry
+		registryParsedStruct.OrgRecord = responseMap["Org-Record"]
+		registryParsedStruct.OrgID = responseMap["Org-ID"]
+		registryParsedStruct.OrgName = responseMap["Org-Name"]
+		registryParsedStruct.CanAllocate, _ = strconv.ParseBool(responseMap["Can-Allocate"])
+		registryParsedStruct.Source = responseMap["Source"]
+		registryParsedStruct.Street1 = responseMap["Street-1"]
+		registryParsedStruct.City = responseMap["City"]
+		registryParsedStruct.Region = responseMap["Region"]
+		registryParsedStruct.Country = responseMap["Country"]
+		registryParsedStruct.CountryCode = responseMap["Country-Code"]
+		registryParsedStruct.RegisterDate, _ = time.Parse("Jan 02 2006 15:04:05", responseMap["Register-Date"])
+		registryParsedStruct.UpdateDate, _ = time.Parse("Jan 02 2006 15:04:05", responseMap["Update-Date"])
+		registryParsedStruct.CreateDate, _ = time.Parse("Jan 02 2006 15:04:05", responseMap["Create-Date"])
+		registryParsedStruct.ModifyDate, _ = time.Parse("Jan 02 2006 15:04:05", responseMap["Modify-Date"])
+		registryParsedStruct.AdminHandle0 = responseMap["Admin-0-Handle"]
+		registryParsedStruct.AbuseHandle0 = responseMap["Abuse-0-Handle"]
+		registryParsedStruct.TechHandle0 = responseMap["CTech-0-Handle"]
+		registryParsedStruct.Comment = responseMap["Comment"]
+
+		responseRegistry = append(responseRegistry, registryParsedStruct)
+	}
+	return responseRegistry, nil
+}
+
+/*
+	Lookup registration by ASN
+
+args:
+
+>asn: string is the ASN value
+
+>query: string is the pwhois query to execute
+
+>c: a channel to return an BGPLookupResponse struct
+*/
+func (server WhoisServer) LookupRegistry(asn string, query string, c chan RegistryLookupResponse) {
+
+	var Answer RegistryRecord
+
+	// Check for pwhois server connection
+	if server.Connection == nil {
+		c <- RegistryLookupResponse{Answer, fmt.Errorf("execute Connect method to establish connection")}
+		return
+	}
+
+	// Post query to pwhois server
+	address_bytes := []byte(query)
+	_, err := server.Connection.Write(address_bytes)
+	if err != nil {
+		c <- RegistryLookupResponse{Answer, err}
+		return
+	}
+
+	// Receive query response from pwhois server
+	var buf bytes.Buffer
+	_, err = io.Copy(&buf, server.Connection)
+	if err != nil {
+		c <- RegistryLookupResponse{Answer, err}
+		return
+	}
+
+	for _, line := range strings.Split(buf.String(), "\n") {
+		fmt.Println(line)
+	}
+
+	// Check for daily limit and raise error
+	if strings.Contains(buf.String(), "query limit exceeded") {
+		var errString string
+		errString = strings.Replace(buf.String(), "Error: Error: ", errString, 1)
+		c <- RegistryLookupResponse{Answer, fmt.Errorf("%v", errString)}
+		return
+	}
+
+	registry, err := parseRegistryResponse(buf.String())
+	if err != nil {
+		c <- RegistryLookupResponse{Answer, err}
+		return
+	}
+	if len(registry) == 0 {
+		c <- RegistryLookupResponse{Answer, fmt.Errorf("no records returned")}
+		return
+	}
+
+	Answer.Asn = asn
+	Answer.Registry = registry[0]
+
+	c <- RegistryLookupResponse{Answer, nil}
 }
