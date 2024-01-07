@@ -1,4 +1,4 @@
-# pwhois [![Build Status](https://github.com/georgestarcher/pwhois/workflows/Go/badge.svg)](https://github.com/georgestarcher/pwhois/actions)
+# pwhois [![Build Status](https://github.com/georgestarcher/pwhois/workflows/pwhois%20CI/badge.svg)](https://github.com/georgestarcher/pwhois/actions)
 
 A Go (golang) module for looking up information from [PWHOIS](https://pwhois.org/).
 
