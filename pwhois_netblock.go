@@ -16,7 +16,7 @@ type NetblockRecord struct {
 	ASSource  string     `json:"as_source"`
 	OrgID     string     `json:"org_id"`
 	Org       int64      `json:"org"`
-	AS        int64      `json:"org"`
+	AS        int64      `json:"as"`
 	OrgName   string     `json:"org_nam"`
 	OrgSource string     `json:"org_source"`
 	Netblocks []Netblock `json:"blocks"`
@@ -88,7 +88,7 @@ func getNetblockSections(response string) ([]string, []string, error) {
 		}
 	}
 
-	// Check for presense of returned error message in header and raise it
+	// Check for presence of returned error message in header and raise it
 	// Example `Error: No netblock found in registry database for org-id=UAAB`s`
 	for _, line := range header {
 		if strings.HasPrefix(line, "Error: ") {

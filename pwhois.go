@@ -12,7 +12,7 @@ import (
 // Timeout for network socket in seconds to pwhois server
 const SocketTimeout int = 5
 
-// Time for netowrk socket keep alive in seconds
+// Time for network socket keep alive in seconds
 const SocketKeepAlive int = 30
 
 // App Name for this module similar to HTTP User Agent in use
