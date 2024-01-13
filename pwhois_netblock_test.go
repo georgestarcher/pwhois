@@ -72,8 +72,7 @@ func TestLookupNetblock(t *testing.T) {
 
 	c := make(chan NetblockLookupResponse)
 
-	value := "3452" // UAB
-	value = "13335"
+	value := "13335"
 
 	query, err := server.FormatNetblockQuery(value)
 	if err != nil {
