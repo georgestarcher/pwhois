@@ -1,4 +1,4 @@
-# pwhois [![Build Status](https://github.com/georgestarcher/pwhois/workflows/pwhois%20CI/badge.svg)](https://github.com/georgestarcher/pwhois/actions)[![Report Card](https://goreportcard.com/badge/github.com/georgestarcher/pwhois)](https://goreportcard.com/report/github.com/georgestarcher/pwhois)
+# pwhois [![Go Reference](https://pkg.go.dev/badge/github.com/georgestarcher/pwhois.svg)](https://pkg.go.dev/github.com/georgestarcher/pwhois)[![Report Card](https://goreportcard.com/badge/github.com/georgestarcher/pwhois)](https://goreportcard.com/report/github.com/georgestarcher/pwhois)[![Build Status](https://github.com/georgestarcher/pwhois/workflows/pwhois%20CI/badge.svg)](https://github.com/georgestarcher/pwhois/actions)
 
 A Go (golang) module for looking up information from [PWHOIS](https://pwhois.org/).
 
