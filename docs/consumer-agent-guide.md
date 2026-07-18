@@ -7,11 +7,18 @@ contract.
 
 ## Install and inspect
 
-Install the exact version the application selects, then inspect its exported
-API before generating code:
+For a new dependency, install an explicit version that the application has
+reviewed. Do not use `@latest` as a substitute for selecting that version:
 
 ```shell
-go get github.com/georgestarcher/pwhois@latest
+go get github.com/georgestarcher/pwhois@v1.0.0
+```
+
+If the application already selects `pwhois` in `go.mod`, do not run `go get`.
+Inspect that selected version and its exported API instead:
+
+```shell
+go list -m -f '{{.Version}}' github.com/georgestarcher/pwhois
 go doc github.com/georgestarcher/pwhois
 ```
 
