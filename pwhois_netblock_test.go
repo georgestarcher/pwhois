@@ -2,7 +2,6 @@ package pwhois
 
 import (
 	"fmt"
-	"sync"
 	"testing"
 )
 
@@ -53,47 +52,5 @@ func TestFormatNetblockQuery(t *testing.T) {
 				t.Errorf("Expected %v, got %v", c.expected, got)
 			}
 		})
-	}
-}
-
-// Test routeview lookup against default pwhois
-func TestLookupNetblock(t *testing.T) {
-
-	server := new(WhoisServer)
-	server.SetDefaultValues()
-	err := server.Connect()
-
-	if err != nil {
-		t.Errorf("got %v", err)
-	}
-
-	// process lookup of values
-	var wg sync.WaitGroup
-
-	c := make(chan NetblockLookupResponse)
-
-	value := "13335"
-
-	query, err := server.FormatNetblockQuery(value)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		server.LookupNetblock(value, query, c)
-	}()
-
-	netblockAnswer := <-c
-	if netblockAnswer.Error != nil {
-		t.Fatalf("ERROR: %v\n", netblockAnswer.Error)
-	}
-
-	got := netblockAnswer.Response.OrgName
-	want := "Cloudflare, Inc."
-
-	if got != want {
-		t.Errorf("Response Count: got %v, wanted %v", got, want)
 	}
 }

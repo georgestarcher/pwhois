@@ -41,16 +41,3 @@ func TestSetDefaultValues(t *testing.T) {
 		})
 	}
 }
-
-// Test connection to default pwhois server
-func TestConnect(t *testing.T) {
-
-	server := new(WhoisServer)
-	server.SetDefaultValues()
-	err := server.Connect()
-	if err != nil {
-		t.Errorf("got %v", err)
-	} else {
-		t.Logf("Connection Established to %+v\n", server.Connection.RemoteAddr())
-	}
-}

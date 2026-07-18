@@ -75,6 +75,24 @@ The other supported lookup types follow the same pattern. Use a separate connect
 
 `SetDefaultValues` configures `whois.pwhois.org:43`. You can set `WhoisServer.Server` and `WhoisServer.Port` before calling `Connect`, but compatibility with alternative servers is not yet validated. Availability and rate limits are controlled by each server operator.
 
+## Development
+
+The default checks are deterministic and do not contact public PWHOIS servers:
+
+```shell
+go test ./...
+go vet ./...
+go build ./...
+```
+
+Live integration tests use `whois.pwhois.org:43` and must be requested explicitly:
+
+```shell
+go test -tags=integration ./...
+```
+
+The live tests depend on the public service's availability, response data, and rate limits, so they are not part of the default GitHub Actions workflow.
+
 ## License
 
 Licensed under the [MIT License](LICENSE). See `LICENSE` for the copyright and permission notice that must accompany copies or substantial portions of the software.
