@@ -1,7 +1,6 @@
 # pwhois
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/georgestarcher/pwhois.svg)](https://pkg.go.dev/github.com/georgestarcher/pwhois)
-[![Go Report Card](https://goreportcard.com/badge/github.com/georgestarcher/pwhois)](https://goreportcard.com/report/github.com/georgestarcher/pwhois)
 [![CI](https://github.com/georgestarcher/pwhois/actions/workflows/go.yml/badge.svg)](https://github.com/georgestarcher/pwhois/actions/workflows/go.yml)
 
 `pwhois` is a Go module for querying a [PWHOIS](https://pwhois.org/) server and parsing its IP, routing, registry, and netblock responses.
