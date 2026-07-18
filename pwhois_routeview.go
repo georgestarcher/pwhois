@@ -144,6 +144,10 @@ func (server WhoisServer) LookupRouteView(asn string, query string, c chan BGPLo
 		c <- BGPLookupResponse{Answer, fmt.Errorf("execute Connect method to establish connection")}
 		return
 	}
+	if err := server.setLookupDeadline(); err != nil {
+		c <- BGPLookupResponse{Answer, err}
+		return
+	}
 
 	// Post query to pwhois server
 	address_bytes := []byte(query)

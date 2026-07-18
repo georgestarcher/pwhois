@@ -218,6 +218,10 @@ func (server WhoisServer) LookupNetblock(asn string, query string, c chan Netblo
 		c <- NetblockLookupResponse{Answer, fmt.Errorf("execute Connect method to establish connection")}
 		return
 	}
+	if err := server.setLookupDeadline(); err != nil {
+		c <- NetblockLookupResponse{Answer, err}
+		return
+	}
 
 	// Post query to pwhois server
 	address_bytes := []byte(query)

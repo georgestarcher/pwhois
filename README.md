@@ -22,7 +22,7 @@ go get github.com/georgestarcher/pwhois
 
 ## Usage
 
-Each lookup uses a TCP connection to a PWHOIS server. Close the connection when the lookup is complete. By default, batch IP lookups accept up to 500 addresses; callers should also respect the selected server's rate limits.
+Each lookup uses a TCP connection to a PWHOIS server. Close the connection when the lookup is complete. By default, connection establishment and the complete lookup exchange time out after five seconds; set `WhoisServer.Timeout` to use a different `time.Duration`. Batch IP lookups accept up to 500 addresses; callers should also respect the selected server's rate limits.
 
 ```go
 package main

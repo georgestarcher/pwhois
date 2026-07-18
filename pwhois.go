@@ -120,7 +120,10 @@ type WhoisServer struct {
 	Server       string `default:"whois.pwhois.org"`
 	Port         int    `default:"43"`
 	BatchMaxSize int    `default:"500"`
-	Connection   net.Conn
+	// Timeout bounds connection establishment and each lookup's complete I/O
+	// exchange. A zero value uses SocketTimeout.
+	Timeout    time.Duration
+	Connection net.Conn
 }
 
 // Return full DNS server socket Aadress
@@ -156,13 +159,33 @@ func (server *WhoisServer) SetDefaultValues() {
 			// Add cases for other types if needed
 		}
 	}
+
+	if server.Timeout == 0 {
+		server.Timeout = time.Second * time.Duration(SocketTimeout)
+	}
+}
+
+func (server WhoisServer) timeout() time.Duration {
+	if server.Timeout > 0 {
+		return server.Timeout
+	}
+
+	return time.Second * time.Duration(SocketTimeout)
+}
+
+// setLookupDeadline bounds both the request write and response read. PWHOIS
+// lookups use a connection per request, so the deadline covers the complete
+// exchange rather than allowing a server that stops responding to block
+// indefinitely.
+func (server WhoisServer) setLookupDeadline() error {
+	return server.Connection.SetDeadline(time.Now().Add(server.timeout()))
 }
 
 // Establish connection to the pwhois server
 func (server *WhoisServer) Connect() error {
 
 	whoisDialer := &net.Dialer{
-		Timeout:   time.Second * time.Duration(SocketTimeout),
+		Timeout:   server.timeout(),
 		KeepAlive: time.Second * time.Duration(SocketKeepAlive),
 	}
 
