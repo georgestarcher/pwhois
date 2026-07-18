@@ -64,6 +64,10 @@ func main() {
 
 The other supported lookup types follow the same pattern. Use a separate connected `WhoisServer` for each lookup.
 
+AI coding assistants integrating this module should use the
+[consumer-agent integration guide](docs/consumer-agent-guide.md). Repository
+maintainers should use the [maintainer guide](AGENTS.md).
+
 | Lookup | Query formatter | Lookup method | Response type |
 | --- | --- | --- | --- |
 | IP | `FormatIpQuery` | `LookupIP` | `IpLookupResponse` |
