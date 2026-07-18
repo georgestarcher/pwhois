@@ -166,6 +166,10 @@ func (server WhoisServer) LookupIP(query string, c chan IpLookupResponse) {
 		c <- IpLookupResponse{Answer, fmt.Errorf("execute Connect method to establish connection")}
 		return
 	}
+	if err := server.setLookupDeadline(); err != nil {
+		c <- IpLookupResponse{Answer, err}
+		return
+	}
 
 	// Post query to pwhois server
 	address_bytes := []byte(query)

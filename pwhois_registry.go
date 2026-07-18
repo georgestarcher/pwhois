@@ -175,6 +175,10 @@ func (server WhoisServer) LookupRegistry(asn string, query string, c chan Regist
 		c <- RegistryLookupResponse{Answer, fmt.Errorf("execute Connect method to establish connection")}
 		return
 	}
+	if err := server.setLookupDeadline(); err != nil {
+		c <- RegistryLookupResponse{Answer, err}
+		return
+	}
 
 	// Post query to pwhois server
 	address_bytes := []byte(query)
