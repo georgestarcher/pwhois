@@ -21,7 +21,7 @@ func TestFormatRegistryQuery(t *testing.T) {
 			name:     "InvalidValue",
 			value:    "",
 			expected: "",
-			err:      fmt.Errorf("no valid value provided"),
+			err:      fmt.Errorf("invalid ASN value"),
 		},
 		{
 			name:     "ValidAsn",

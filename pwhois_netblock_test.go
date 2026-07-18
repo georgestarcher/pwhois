@@ -21,13 +21,13 @@ func TestFormatNetblockQuery(t *testing.T) {
 			name:     "EmptyValue",
 			value:    "",
 			expected: "",
-			err:      fmt.Errorf("no valid value provided"),
+			err:      fmt.Errorf("invalid ASN value"),
 		},
 		{
 			name:     "InvalidValue",
 			value:    "8.8.8.8",
 			expected: "",
-			err:      fmt.Errorf("invalid asn value"),
+			err:      fmt.Errorf("invalid ASN value"),
 		},
 		{
 			name:     "ValidValue",
