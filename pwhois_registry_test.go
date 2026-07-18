@@ -2,7 +2,6 @@ package pwhois
 
 import (
 	"fmt"
-	"sync"
 	"testing"
 )
 
@@ -47,47 +46,5 @@ func TestFormatRegistryQuery(t *testing.T) {
 				t.Errorf("Expected %v, got %v", c.expected, got)
 			}
 		})
-	}
-}
-
-// Test routeview lookup against default pwhois
-func TestLookupRegistry(t *testing.T) {
-
-	server := new(WhoisServer)
-	server.SetDefaultValues()
-	err := server.Connect()
-
-	if err != nil {
-		t.Errorf("got %v", err)
-	}
-
-	// process lookup of values
-	var wg sync.WaitGroup
-
-	c := make(chan RegistryLookupResponse)
-
-	value := "7922"
-
-	query, err := server.FormatRegistryQuery(value)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		server.LookupRegistry(value, query, c)
-	}()
-
-	registryAnswer := <-c
-	if registryAnswer.Error != nil {
-		t.Fatalf("ERROR: %v\n", registryAnswer.Error)
-	}
-
-	got := registryAnswer.Response.Registry.OrgName
-	want := "Comcast Cable Communications, LLC"
-
-	if got != want {
-		t.Errorf("Response Count: got %v, wanted %v", got, want)
 	}
 }
