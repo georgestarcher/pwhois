@@ -5,7 +5,7 @@
 
 `pwhois` is a Go module for querying a [PWHOIS](https://pwhois.org/) server and parsing its IP, routing, registry, and netblock responses.
 
-Originally written by George Starcher with OpenAI ChatGPT 3.5 on January 6, 2024. The implementation references the original [`whob` source code](https://github.com/irr/whob/blob/master/whob).
+Created by George Starcher. The implementation references the original [`whob` source code](https://github.com/irr/whob/blob/master/whob).
 
 ## Supported lookups
 
