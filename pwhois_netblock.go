@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -125,22 +124,30 @@ func parseNetblockResponse(asn string, response string) ([]NetblockRecord, error
 	}
 
 	// Process headerStrings
-	for _, line := range headerStrings {
+	for lineIndex, line := range headerStrings {
 		if len(line) == 0 {
 			continue
 		}
-		values := strings.Split(line, ": ")
-		responseMap[values[0]] = strings.Trim(values[1], " ")
-		if len(responseMap) == 0 {
-			continue
+		key, value, err := parseResponseLine(line)
+		if err != nil {
+			return nil, fmt.Errorf("parse netblock header line %d: %w", lineIndex+1, err)
 		}
+		responseMap[key] = value
 	}
 
+	asValue, err := parseResponseInt64("AS", responseMap["AS"])
+	if err != nil {
+		return nil, fmt.Errorf("parse netblock header: %w", err)
+	}
+	orgValue, err := parseResponseInt64("Org", responseMap["Org"])
+	if err != nil {
+		return nil, fmt.Errorf("parse netblock header: %w", err)
+	}
 	responseRecord.Asn = asn
 	responseRecord.OriginAs = responseMap["AS"]
 	responseRecord.ASSource = responseMap["AS-Source"]
-	responseRecord.AS, _ = strconv.ParseInt(responseMap["AS"], 10, 64)
-	responseRecord.Org, _ = strconv.ParseInt(responseMap["Org"], 10, 64)
+	responseRecord.AS = asValue
+	responseRecord.Org = orgValue
 	responseRecord.OrgID = responseMap["Org-ID"]
 	responseRecord.OrgName = responseMap["Org-Name"]
 	responseRecord.OrgSource = responseMap["Org-Source"]
@@ -148,21 +155,33 @@ func parseNetblockResponse(asn string, response string) ([]NetblockRecord, error
 
 	// Process blockStrings
 
-	for _, line := range blockStrings {
+	for blockIndex, line := range blockStrings {
 		if len(line) == 0 {
 			continue
 		}
 		fields := strings.Fields(line)
 		if len(fields) < 23 {
-			continue // Skip invalid lines
+			return nil, fmt.Errorf("parse netblock record %d: expected at least 23 fields", blockIndex+1)
 		}
 		networkRange := fmt.Sprintf("%v-%v", fields[0], fields[2])
 		networkName := fields[4]
 		networkType := fields[6]
-		registerDate, _ := time.Parse("2006-01-02", fields[8])
-		updateDate, _ := time.Parse("2006-01-02", fields[10])
-		createDate, _ := time.Parse("Jan 02 2006 15:04:05", fmt.Sprintf("%s %s %s %s", fields[12], fields[13], fields[14], fields[15]))
-		modifyDate, _ := time.Parse("Jan 02 2006 15:04:05", fmt.Sprintf("%s %s %s %s", fields[17], fields[18], fields[19], fields[20]))
+		registerDate, err := parseResponseTime("Register-Date", fields[8], "2006-01-02")
+		if err != nil {
+			return nil, fmt.Errorf("parse netblock record %d: %w", blockIndex+1, err)
+		}
+		updateDate, err := parseResponseTime("Update-Date", fields[10], "2006-01-02")
+		if err != nil {
+			return nil, fmt.Errorf("parse netblock record %d: %w", blockIndex+1, err)
+		}
+		createDate, err := parseResponseTime("Create-Date", fmt.Sprintf("%s %s %s %s", fields[12], fields[13], fields[14], fields[15]), "Jan 02 2006 15:04:05")
+		if err != nil {
+			return nil, fmt.Errorf("parse netblock record %d: %w", blockIndex+1, err)
+		}
+		modifyDate, err := parseResponseTime("Modify-Date", fmt.Sprintf("%s %s %s %s", fields[17], fields[18], fields[19], fields[20]), "Jan 02 2006 15:04:05")
+		if err != nil {
+			return nil, fmt.Errorf("parse netblock record %d: %w", blockIndex+1, err)
+		}
 		source := fields[22]
 
 		block := Netblock{

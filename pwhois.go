@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -40,6 +41,62 @@ func removeDuplicate[T string | int](sliceList []T) []T {
 // Utiliy function to check string is only digits
 func isOnlyDigits(s string) bool {
 	return regexp.MustCompile(`^\d+$`).MatchString(s)
+}
+
+// parseResponseLine splits a PWHOIS field without discarding delimiters in its
+// value. Response content is remote input, so malformed lines must produce an
+// error instead of panicking the caller.
+func parseResponseLine(line string) (string, string, error) {
+	key, value, ok := strings.Cut(line, ": ")
+	if !ok {
+		return "", "", fmt.Errorf("malformed response line: missing field delimiter")
+	}
+
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return "", "", fmt.Errorf("malformed response line: empty field name")
+	}
+
+	return key, strings.TrimSpace(value), nil
+}
+
+func parseResponseTime(field, value string, layouts ...string) (time.Time, error) {
+	if value == "" {
+		return time.Time{}, nil
+	}
+
+	for _, layout := range layouts {
+		parsed, err := time.Parse(layout, value)
+		if err == nil {
+			return parsed, nil
+		}
+	}
+
+	return time.Time{}, fmt.Errorf("invalid %s value", field)
+}
+
+func parseResponseInt64(field, value string) (int64, error) {
+	if value == "" {
+		return 0, nil
+	}
+
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s value: %w", field, err)
+	}
+	return parsed, nil
+}
+
+func parseResponseFloat64(field, value string) (float64, error) {
+	if value == "" {
+		return 0, nil
+	}
+
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s value: %w", field, err)
+	}
+	return parsed, nil
 }
 
 // Whois server object

@@ -67,7 +67,6 @@ func (server *WhoisServer) FormatRegistryQuery(asn string) (string, error) {
 func parseRegistryResponse(response string) ([]Registry, error) {
 
 	var responseRegistry []Registry
-	responseMap := make(map[string]string)
 	responseRecords := strings.Split(response, "\n\n")
 
 	// Break the records apart and into the WhoIs structs
@@ -75,36 +74,62 @@ func parseRegistryResponse(response string) ([]Registry, error) {
 	if len(response) == 0 || len(responseRecords) == 0 {
 		return nil, fmt.Errorf("no records returned")
 	}
-	for _, record := range responseRecords {
+	for recordIndex, record := range responseRecords {
 		if len(record) == 0 {
 			continue
 		}
+		responseMap := make(map[string]string)
 		lines := strings.Split(record, "\n")
-		for _, line := range lines {
+		for lineIndex, line := range lines {
 			if len(line) == 0 {
 				continue
 			}
-			values := strings.Split(line, ": ")
-			responseMap[values[0]] = strings.Trim(values[1], " ")
-			if len(responseMap) == 0 {
-				continue
+			key, value, err := parseResponseLine(line)
+			if err != nil {
+				return nil, fmt.Errorf("parse registry response record %d line %d: %w", recordIndex+1, lineIndex+1, err)
 			}
+			responseMap[key] = value
 		}
+		if len(responseMap) == 0 {
+			continue
+		}
+
+		canAllocate, err := parseCanAllocate(responseMap["Can-Allocate"])
+		if err != nil {
+			return nil, fmt.Errorf("parse registry response record %d: %w", recordIndex+1, err)
+		}
+		registerDate, err := parseResponseTime("Register-Date", responseMap["Register-Date"], "2006-01-02", "Jan 02 2006 15:04:05")
+		if err != nil {
+			return nil, fmt.Errorf("parse registry response record %d: %w", recordIndex+1, err)
+		}
+		updateDate, err := parseResponseTime("Update-Date", responseMap["Update-Date"], "2006-01-02", "Jan 02 2006 15:04:05")
+		if err != nil {
+			return nil, fmt.Errorf("parse registry response record %d: %w", recordIndex+1, err)
+		}
+		createDate, err := parseResponseTime("Create-Date", responseMap["Create-Date"], "Jan 02 2006 15:04:05")
+		if err != nil {
+			return nil, fmt.Errorf("parse registry response record %d: %w", recordIndex+1, err)
+		}
+		modifyDate, err := parseResponseTime("Modify-Date", responseMap["Modify-Date"], "Jan 02 2006 15:04:05")
+		if err != nil {
+			return nil, fmt.Errorf("parse registry response record %d: %w", recordIndex+1, err)
+		}
+
 		var registryParsedStruct Registry
 		registryParsedStruct.OrgRecord = responseMap["Org-Record"]
 		registryParsedStruct.OrgID = responseMap["Org-ID"]
 		registryParsedStruct.OrgName = responseMap["Org-Name"]
-		registryParsedStruct.CanAllocate, _ = strconv.ParseBool(responseMap["Can-Allocate"])
+		registryParsedStruct.CanAllocate = canAllocate
 		registryParsedStruct.Source = responseMap["Source"]
 		registryParsedStruct.Street1 = responseMap["Street-1"]
 		registryParsedStruct.City = responseMap["City"]
 		registryParsedStruct.Region = responseMap["Region"]
 		registryParsedStruct.Country = responseMap["Country"]
 		registryParsedStruct.CountryCode = responseMap["Country-Code"]
-		registryParsedStruct.RegisterDate, _ = time.Parse("Jan 02 2006 15:04:05", responseMap["Register-Date"])
-		registryParsedStruct.UpdateDate, _ = time.Parse("Jan 02 2006 15:04:05", responseMap["Update-Date"])
-		registryParsedStruct.CreateDate, _ = time.Parse("Jan 02 2006 15:04:05", responseMap["Create-Date"])
-		registryParsedStruct.ModifyDate, _ = time.Parse("Jan 02 2006 15:04:05", responseMap["Modify-Date"])
+		registryParsedStruct.RegisterDate = registerDate
+		registryParsedStruct.UpdateDate = updateDate
+		registryParsedStruct.CreateDate = createDate
+		registryParsedStruct.ModifyDate = modifyDate
 		registryParsedStruct.AdminHandle0 = responseMap["Admin-0-Handle"]
 		registryParsedStruct.AbuseHandle0 = responseMap["Abuse-0-Handle"]
 		registryParsedStruct.TechHandle0 = responseMap["CTech-0-Handle"]
@@ -113,6 +138,21 @@ func parseRegistryResponse(response string) ([]Registry, error) {
 		responseRegistry = append(responseRegistry, registryParsedStruct)
 	}
 	return responseRegistry, nil
+}
+
+func parseCanAllocate(value string) (bool, error) {
+	switch value {
+	case "", "0":
+		return false, nil
+	case "1":
+		return true, nil
+	default:
+		parsed, err := strconv.ParseBool(value)
+		if err != nil {
+			return false, fmt.Errorf("invalid Can-Allocate value: %w", err)
+		}
+		return parsed, nil
+	}
 }
 
 /*
@@ -150,10 +190,6 @@ func (server WhoisServer) LookupRegistry(asn string, query string, c chan Regist
 	if err != nil {
 		c <- RegistryLookupResponse{Answer, err}
 		return
-	}
-
-	for _, line := range strings.Split(buf.String(), "\n") {
-		fmt.Println(line)
 	}
 
 	// Check for daily limit and raise error
