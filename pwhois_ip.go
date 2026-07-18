@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -80,7 +79,6 @@ func (server *WhoisServer) FormatIpQuery(values []string) (string, error) {
 func parseIpResponse(response string) ([]WhoIs, error) {
 
 	var responseWhoIs []WhoIs
-	responseMap := make(map[string]string)
 	responseRecords := strings.Split(response, "\n\n")
 
 	// Break the records apart and into the WhoIs structs
@@ -88,23 +86,47 @@ func parseIpResponse(response string) ([]WhoIs, error) {
 	if len(response) == 0 || len(responseRecords) == 0 {
 		return nil, fmt.Errorf("no records returned")
 	}
-	for _, record := range responseRecords {
+	for recordIndex, record := range responseRecords {
 		if len(record) == 0 {
 			continue
 		}
+		responseMap := make(map[string]string)
 		lines := strings.Split(record, "\n")
-		for _, line := range lines {
+		for lineIndex, line := range lines {
 			if len(line) == 0 {
 				continue
 			}
-			values := strings.Split(line, ": ")
-			responseMap[values[0]] = strings.Trim(values[1], " ")
-			if len(responseMap) == 0 {
-				continue
+			key, value, err := parseResponseLine(line)
+			if err != nil {
+				return nil, fmt.Errorf("parse IP response record %d line %d: %w", recordIndex+1, lineIndex+1, err)
 			}
+			responseMap[key] = value
 		}
-		latitudeFloat, _ := strconv.ParseFloat(responseMap["Latitude"], 64)
-		LongitudeFloat, _ := strconv.ParseFloat(responseMap["Longitude"], 64)
+		if len(responseMap) == 0 {
+			continue
+		}
+
+		latitudeFloat, err := parseResponseFloat64("Latitude", responseMap["Latitude"])
+		if err != nil {
+			return nil, fmt.Errorf("parse IP response record %d: %w", recordIndex+1, err)
+		}
+		longitudeFloat, err := parseResponseFloat64("Longitude", responseMap["Longitude"])
+		if err != nil {
+			return nil, fmt.Errorf("parse IP response record %d: %w", recordIndex+1, err)
+		}
+		cacheDate, err := parseResponseTime("Cache-Date", responseMap["Cache-Date"], "Jan 02 2006 15:04:05")
+		if err != nil {
+			return nil, fmt.Errorf("parse IP response record %d: %w", recordIndex+1, err)
+		}
+		routeOriginatedDate, err := parseResponseTime("Route-Originated-Date", responseMap["Route-Originated-Date"], "Jan 02 2006 15:04:05")
+		if err != nil {
+			return nil, fmt.Errorf("parse IP response record %d: %w", recordIndex+1, err)
+		}
+		routeOriginatedTS, err := parseResponseInt64("Route-Originated-TS", responseMap["Route-Originated-TS"])
+		if err != nil {
+			return nil, fmt.Errorf("parse IP response record %d: %w", recordIndex+1, err)
+		}
+
 		var whoIsParsedStruct WhoIs
 		whoIsParsedStruct.IP = responseMap["IP"]
 		whoIsParsedStruct.OriginAS = responseMap["Origin-AS"]
@@ -112,15 +134,15 @@ func parseIpResponse(response string) ([]WhoIs, error) {
 		whoIsParsedStruct.AsnOrgName = responseMap["AS-Org-Name"]
 		whoIsParsedStruct.OrgName = responseMap["Org-Name"]
 		whoIsParsedStruct.NetworkName = responseMap["Net-Name"]
-		whoIsParsedStruct.CacheDate, _ = time.Parse("Jan 02 2006 15:04:05", responseMap["Cache-Date"])
+		whoIsParsedStruct.CacheDate = cacheDate
 		whoIsParsedStruct.Latitude = latitudeFloat
-		whoIsParsedStruct.Longitude = LongitudeFloat
+		whoIsParsedStruct.Longitude = longitudeFloat
 		whoIsParsedStruct.City = responseMap["City"]
 		whoIsParsedStruct.Region = responseMap["Region"]
 		whoIsParsedStruct.Country = responseMap["Country"]
 		whoIsParsedStruct.CountryCode = responseMap["Country-Code"]
-		whoIsParsedStruct.RouteOriginatedDate, _ = time.Parse("Jan 02 2006 15:04:05", responseMap["Route-Originated-Date"])
-		whoIsParsedStruct.RouteOriginatedTS, _ = strconv.ParseInt(responseMap["Route-Originated-TS"], 10, 64)
+		whoIsParsedStruct.RouteOriginatedDate = routeOriginatedDate
+		whoIsParsedStruct.RouteOriginatedTS = routeOriginatedTS
 		responseWhoIs = append(responseWhoIs, whoIsParsedStruct)
 	}
 	return responseWhoIs, nil

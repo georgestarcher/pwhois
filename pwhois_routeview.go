@@ -55,26 +55,48 @@ func parseBgpResponse(response string) ([]BGPRoute, error) {
 		return nil, fmt.Errorf("no records returned")
 
 	}
-	return parseBGPData(response), nil
+	routes, err := parseBGPData(response)
+	if err != nil {
+		return nil, err
+	}
+	if len(routes) == 0 {
+		return nil, fmt.Errorf("no routes returned")
+	}
+	return routes, nil
 }
 
 // Parse BGP route data from string
-func parseBGPData(data string) []BGPRoute {
+func parseBGPData(data string) ([]BGPRoute, error) {
 	var routes []BGPRoute
 
 	lines := strings.Split(data, "\n")
-	for _, line := range lines {
+	for lineIndex, line := range lines {
+		if !strings.HasPrefix(strings.TrimSpace(line), "*>") {
+			continue
+		}
 		fields := strings.Fields(line)
-		if len(fields) < 20 {
-			continue // Skip invalid lines
+		if len(fields) < 21 {
+			return nil, fmt.Errorf("parse route record at line %d: expected at least 21 fields", lineIndex+1)
 		}
 
 		prefix := fields[1]
-		createDate, _ := time.Parse("Jan 02 2006 15:04:05", fmt.Sprintf("%s %s %s %s", fields[3], fields[4], fields[5], fields[6]))
-		modifyDate, _ := time.Parse("Jan 02 2006 15:04:05", fmt.Sprintf("%s %s %s %s", fields[8], fields[9], fields[10], fields[11]))
-		originatedDate, _ := time.Parse("Jan 02 2006 15:04:05", fmt.Sprintf("%s %s %s %s", fields[13], fields[14], fields[15], fields[16]))
+		createDate, err := parseResponseTime("Create-Date", fmt.Sprintf("%s %s %s %s", fields[3], fields[4], fields[5], fields[6]), "Jan 02 2006 15:04:05")
+		if err != nil {
+			return nil, fmt.Errorf("parse route record at line %d: %w", lineIndex+1, err)
+		}
+		modifyDate, err := parseResponseTime("Modify-Date", fmt.Sprintf("%s %s %s %s", fields[8], fields[9], fields[10], fields[11]), "Jan 02 2006 15:04:05")
+		if err != nil {
+			return nil, fmt.Errorf("parse route record at line %d: %w", lineIndex+1, err)
+		}
+		originatedDate, err := parseResponseTime("Originated-Date", fmt.Sprintf("%s %s %s %s", fields[13], fields[14], fields[15], fields[16]), "Jan 02 2006 15:04:05")
+		if err != nil {
+			return nil, fmt.Errorf("parse route record at line %d: %w", lineIndex+1, err)
+		}
 		nextHop := fields[18]
-		asPath := parseASPath(fields[20:])
+		asPath, err := parseASPath(fields[20:])
+		if err != nil {
+			return nil, fmt.Errorf("parse route record at line %d: %w", lineIndex+1, err)
+		}
 
 		route := BGPRoute{
 			Prefix:         prefix,
@@ -87,17 +109,20 @@ func parseBGPData(data string) []BGPRoute {
 
 		routes = append(routes, route)
 	}
-	return routes
+	return routes, nil
 }
 
 // Parse AS number path
-func parseASPath(asPathFields []string) []int {
+func parseASPath(asPathFields []string) ([]int, error) {
 	var asPath []int
-	for _, asStr := range asPathFields {
-		as, _ := strconv.Atoi(asStr)
+	for index, asStr := range asPathFields {
+		as, err := strconv.Atoi(asStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid AS path value at position %d: %w", index+1, err)
+		}
 		asPath = append(asPath, as)
 	}
-	return asPath
+	return asPath, nil
 }
 
 /*
