@@ -1,18 +1,21 @@
-# pwhois [![Go Reference](https://pkg.go.dev/badge/github.com/georgestarcher/pwhois.svg)](https://pkg.go.dev/github.com/georgestarcher/pwhois) [![Report Card](https://goreportcard.com/badge/github.com/georgestarcher/pwhois)](https://goreportcard.com/report/github.com/georgestarcher/pwhois) [![Build Status](https://github.com/georgestarcher/pwhois/workflows/pwhois%20CI/badge.svg)](https://github.com/georgestarcher/pwhois/actions)
+# pwhois
 
-A Go (golang) module for looking up information from [PWHOIS](https://pwhois.org/).
+[![Go Reference](https://pkg.go.dev/badge/github.com/georgestarcher/pwhois.svg)](https://pkg.go.dev/github.com/georgestarcher/pwhois)
+[![Go Report Card](https://goreportcard.com/badge/github.com/georgestarcher/pwhois)](https://goreportcard.com/report/github.com/georgestarcher/pwhois)
+[![CI](https://github.com/georgestarcher/pwhois/actions/workflows/go.yml/badge.svg)](https://github.com/georgestarcher/pwhois/actions/workflows/go.yml)
 
-Written by George Starcher with OpenAI ChatGPT v3.5 Jan 6rd, 2024
-  * https://help.openai.com/en/articles/6825453-chatgpt-release-notes
-  * https://chat.openai.com/share/f664e12a-e26f-4a64-96e2-8ecdf9008938
+`pwhois` is a Go module for querying a [PWHOIS](https://pwhois.org/) server and parsing its IP, routing, registry, and netblock responses.
 
-Referenced Original whob source:
-* [whob source code](https://pwhois.org/lft/)
+Originally written by George Starcher with OpenAI ChatGPT 3.5 on January 6, 2024. The implementation references the original [`whob` source code](https://github.com/irr/whob/blob/master/whob).
 
-MIT license, check license.txt for more information
-All text above must be included in any redistribution
+## Supported lookups
 
-## Installation
+- Individual or batched IP addresses
+- RouteView data for an autonomous system number (ASN)
+- Registry data for an ASN
+- Netblocks announced by an ASN
+
+## Install
 
 ```shell
 go get github.com/georgestarcher/pwhois
@@ -20,153 +23,59 @@ go get github.com/georgestarcher/pwhois
 
 ## Usage
 
-1. The maximum batch query size is 500 IP addresses. Going larger or querying too frequently could get you rate limited.
-2. Watch for error `ERROR: Unable to perform lookup; Daily query limit exceeded.` raised from the Lookup method. You have been rate limited by the phwois server.
-3. You can consider `server.MaxBatchSize = 100` or other value to protect your daily limit. `500` is the default.
-
-A go usage would be like the following. Note since each query is a network byte stream communications we make a connection for each query. 
-
-In the IP lookup you could add up to the `MaxBatchSize` number of IPs for a single query.
+Each lookup uses a TCP connection to a PWHOIS server. Close the connection when the lookup is complete. By default, batch IP lookups accept up to 500 addresses; callers should also respect the selected server's rate limits.
 
 ```go
-
 package main
 
 import (
 	"fmt"
-	"sync"
+	"log"
 
 	"github.com/georgestarcher/pwhois"
 )
 
 func main() {
+	server := new(pwhois.WhoisServer)
+	server.SetDefaultValues()
 
-	// A Connection for IP query
-	server1 := new(pwhois.WhoisServer)
-	server1.SetDefaultValues()
-	err := server1.Connect()
+	if err := server.Connect(); err != nil {
+		log.Fatal(err)
+	}
+	defer server.Connection.Close()
+
+	query, err := server.FormatIpQuery([]string{"8.8.8.8"})
 	if err != nil {
-		fmt.Printf("%+v\n", err)
-	} else {
-		fmt.Printf("Connection Established to %+v\n", server1.Connection.RemoteAddr())
+		log.Fatal(err)
 	}
 
-	// A Connection for routeview query
-	server2 := new(pwhois.WhoisServer)
-	server2.SetDefaultValues()
-	err = server2.Connect()
-	if err != nil {
-		fmt.Printf("%+v\n", err)
-	} else {
-		fmt.Printf("Connection Established to %+v\n", server2.Connection.RemoteAddr())
+	responses := make(chan pwhois.IpLookupResponse, 1)
+	server.LookupIP(query, responses)
+	response := <-responses
+
+	if response.Error != nil {
+		log.Fatal(response.Error)
 	}
 
-	// A Connection for registry query
-	server3 := new(pwhois.WhoisServer)
-	server3.SetDefaultValues()
-	err = server3.Connect()
-	if err != nil {
-		fmt.Printf("%+v\n", err)
-	} else {
-		fmt.Printf("Connection Established to %+v\n", server3.Connection.RemoteAddr())
+	for _, record := range response.Response {
+		fmt.Printf("%s: AS%s (%s)\n", record.IP, record.OriginAS, record.OrgName)
 	}
-
-	// A Connection for netblock query
-	server4 := new(pwhois.WhoisServer)
-	server4.SetDefaultValues()
-	err = server4.Connect()
-	if err != nil {
-		fmt.Printf("%+v\n", err)
-	} else {
-		fmt.Printf("Connection Established to %+v\n", server4.Connection.RemoteAddr())
-	}
-
-	// Setup for the IP query
-	var wg sync.WaitGroup
-
-	c := make(chan pwhois.IpLookupResponse)
-
-	// IP lookup
-	valueIP := "8.8.8.8"
-	var values []string
-	values = append(values, valueIP)
-	query, err := server1.FormatIpQuery(values)
-	if err != nil {
-		fmt.Printf("%+v", err)
-	}
-
-	// Setup for the routeview query
-	c2 := make(chan pwhois.BGPLookupResponse)
-	valueASN := "15169"
-	queryRV, err := server2.FormatRouteViewQuery(valueASN)
-	if err != nil {
-		fmt.Printf("%+v\n", err)
-	}
-
-	// Setup for the registry query
-	c3 := make(chan pwhois.RegistryLookupResponse)
-	queryRegistry, err := server3.FormatRegistryQuery(valueASN)
-	if err != nil {
-		fmt.Printf("%+v\n", err)
-	}
-
-	// Setup for the netblock query
-	c4 := make(chan pwhois.NetblockLookupResponse)
-	queryNetblock, err := server3.FormatNetblockQuery(valueASN)
-	if err != nil {
-		fmt.Printf("%+v\n", err)
-	}
-
-	// Excute each connection/query as a goroutine
-	wg.Add(4)
-	go func() {
-		defer wg.Done()
-		server1.LookupIP(query, c)
-		server2.LookupRouteView(valueASN, queryRV, c2)
-		server3.LookupRegistry(valueASN, queryRegistry, c3)
-		server4.LookupNetblock(valueASN, queryNetblock, c4)
-	}()
-
-	// Get IP query results
-	whoisAnswer := <-c
-	if whoisAnswer.Error != nil {
-		fmt.Printf("ERROR: %+v\n", whoisAnswer.Error)
-	}
-
-	// Get routeview query results
-	asnAnswer := <-c2
-	if asnAnswer.Error != nil {
-		fmt.Printf("ERROR:%+v\n", asnAnswer.Error)
-	}
-
-	// Get registry query results
-	registryAnswer := <-c3
-	if registryAnswer.Error != nil {
-		fmt.Printf("ERROR:%+v\n", registryAnswer.Error)
-	}
-
-	// Get netblock query results
-	netblockAnswer := <-c4
-	if netblockAnswer.Error != nil {
-		fmt.Printf("ERROR:%+v\n", netblockAnswer.Error)
-	}
-
-	// Show results
-	fmt.Printf("IP Response:%+v\n", whoisAnswer.Response)
-	fmt.Printf("RouteView Response:%+v with # of Routes:%v\n", asnAnswer.Response.Asn, len(asnAnswer.Response.Routes))
-	fmt.Printf("Registration:%+v\n", registryAnswer.Response.Registry)
-	fmt.Printf("Netblock Response:%+v with # of Blocks:%v\n", netblockAnswer.Response.Asn, len(netblockAnswer.Response.Netblocks))
 }
 ```
 
-## pwhois Servers
+The other supported lookup types follow the same pattern. Use a separate connected `WhoisServer` for each lookup.
 
-Source: whob.c from the [whob source code](https://pwhois.org/lft/)
+| Lookup | Query formatter | Lookup method | Response type |
+| --- | --- | --- | --- |
+| IP | `FormatIpQuery` | `LookupIP` | `IpLookupResponse` |
+| RouteView | `FormatRouteViewQuery` | `LookupRouteView` | `BGPLookupResponse` |
+| Registry | `FormatRegistryQuery` | `LookupRegistry` | `RegistryLookupResponse` |
+| Netblock | `FormatNetblockQuery` | `LookupNetblock` | `NetblockLookupResponse` |
 
-* whois.pwhois.org
-* whois.ra.net
-* whois.cymru.com
-* whois.arin.net
-* whois.apnic.net
-* whois.ripe.net
-* riswhois.ripe.net
+## PWHOIS servers
+
+`SetDefaultValues` configures `whois.pwhois.org:43`. You can set `WhoisServer.Server` and `WhoisServer.Port` before calling `Connect`, but compatibility with alternative servers is not yet validated. Availability and rate limits are controlled by each server operator.
+
+## License
+
+Licensed under the [MIT License](LICENSE). See `LICENSE` for the copyright and permission notice that must accompany copies or substantial portions of the software.
