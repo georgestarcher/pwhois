@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Go package documentation
+    url: https://pkg.go.dev/github.com/georgestarcher/pwhois
+    about: Review the public API, exported types, and package documentation.
+  - name: Security vulnerability
+    url: https://github.com/georgestarcher/pwhois/security/advisories/new
+    about: Report security problems privately instead of opening a public issue.

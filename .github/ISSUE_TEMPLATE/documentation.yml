@@ -1,0 +1,65 @@
+name: Documentation issue
+description: Report missing, unclear, or incorrect pwhois documentation.
+title: "Docs: "
+labels:
+  - documentation
+body:
+  - type: dropdown
+    id: location
+    attributes:
+      label: Documentation location
+      options:
+        - README
+        - Go package documentation on pkg.go.dev
+        - Exported type, function, or method comment
+        - Code example
+        - Integration-test instructions
+        - Release or migration documentation
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: link-or-symbol
+    attributes:
+      label: Link, file, or exported symbol
+      description: Identify the exact documentation or API being discussed.
+      placeholder: README.md Usage, WhoisServer.Connect, or a pkg.go.dev URL
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is unclear or incorrect?
+      description: Quote only the minimum text needed and explain why it is misleading, incomplete, or stale.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-change
+    attributes:
+      label: Suggested improvement
+      description: Describe the wording, example, or structure that would resolve the problem.
+    validations:
+      required: true
+
+  - type: textarea
+    id: user-goal
+    attributes:
+      label: Reader goal
+      description: What was the reader trying to accomplish when the documentation failed them?
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I checked the current README and pkg.go.dev documentation.
+          required: true
+        - label: Any example data is synthetic and contains no private registry information.
+          required: true
+        - label: I searched the open and closed issues for this documentation problem.
+          required: true
