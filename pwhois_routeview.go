@@ -2,7 +2,6 @@ package pwhois
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -41,11 +40,11 @@ args:
 */
 func (server *WhoisServer) FormatRouteViewQuery(asn string) (string, error) {
 
-	if len(asn) == 0 {
-		return "", errors.New("no valid value provided")
+	normalizedASN, err := normalizeASN(asn)
+	if err != nil {
+		return "", err
 	}
-	asn = strings.TrimPrefix(asn, "AS")
-	queryString := fmt.Sprintf("app=\"%s\" routeview source-as=%s\n", AppName, asn)
+	queryString := fmt.Sprintf("app=\"%s\" routeview source-as=%s\n", AppName, normalizedASN)
 	return queryString, nil
 }
 

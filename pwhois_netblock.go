@@ -48,15 +48,11 @@ args:
 */
 func (server *WhoisServer) FormatNetblockQuery(asn string) (string, error) {
 
-	if len(asn) == 0 {
-		return "", fmt.Errorf("no valid value provided")
+	normalizedASN, err := normalizeASN(asn)
+	if err != nil {
+		return "", err
 	}
-
-	asn = strings.TrimPrefix(asn, "AS")
-	if !isOnlyDigits(asn) {
-		return "", fmt.Errorf("invalid asn value")
-	}
-	queryString := fmt.Sprintf("app=\"%s\" netblock source-as=%s\n", AppName, asn)
+	queryString := fmt.Sprintf("app=\"%s\" netblock source-as=%s\n", AppName, normalizedASN)
 
 	return queryString, nil
 }

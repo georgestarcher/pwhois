@@ -1,6 +1,7 @@
 package pwhois
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"reflect"
@@ -41,6 +42,21 @@ func removeDuplicate[T string | int](sliceList []T) []T {
 // Utiliy function to check string is only digits
 func isOnlyDigits(s string) bool {
 	return regexp.MustCompile(`^\d+$`).MatchString(s)
+}
+
+// normalizeASN accepts decimal ASNs with an optional case-insensitive AS
+// prefix. All ASN query formatters use it so they accept and reject the same
+// inputs.
+func normalizeASN(value string) (string, error) {
+	asn := strings.TrimSpace(value)
+	if len(asn) >= 2 && strings.EqualFold(asn[:2], "AS") {
+		asn = asn[2:]
+	}
+	if !isOnlyDigits(asn) {
+		return "", errors.New("invalid ASN value")
+	}
+
+	return asn, nil
 }
 
 // parseResponseLine splits a PWHOIS field without discarding delimiters in its
