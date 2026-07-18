@@ -93,6 +93,12 @@ go test -tags=integration ./...
 
 The live tests depend on the public service's availability, response data, and rate limits, so they are not part of the default GitHub Actions workflow.
 
+## JSON output
+
+The explicit JSON-tagged data records (`WhoIs`, `BGPRoute`, `BGPRoutes`, `RegistryRecord`, `Registry`, `NetblockRecord`, and `Netblock`) use normalized snake_case keys and are covered by serialization tests. Postal codes are text so leading zeros and alphanumeric values are preserved.
+
+`WhoisServer` and the channel response wrappers are connection/control types, not JSON output contracts.
+
 ## License
 
 Licensed under the [MIT License](LICENSE). See `LICENSE` for the copyright and permission notice that must accompany copies or substantial portions of the software.

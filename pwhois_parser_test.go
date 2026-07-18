@@ -1,6 +1,7 @@
 package pwhois
 
 import (
+	"encoding/json"
 	"io"
 	"net"
 	"os"
@@ -78,6 +79,7 @@ func TestParseRegistryResponseIsolatesRecords(t *testing.T) {
 	response := strings.Join([]string{
 		"Org-ID: FIRST",
 		"Org-Name: First: Organization",
+		"Postal-Code: 01234",
 		"Can-Allocate: 1",
 		"State: NJ",
 		"Register-Date: 2001-09-18",
@@ -102,11 +104,59 @@ func TestParseRegistryResponseIsolatesRecords(t *testing.T) {
 	if records[0].RegisterDate.IsZero() {
 		t.Fatal("expected ISO register date to be parsed")
 	}
+	if records[0].PostalCode != "01234" {
+		t.Fatalf("postal code: got %q, want %q", records[0].PostalCode, "01234")
+	}
 	if records[1].OrgName != "" {
 		t.Fatalf("second record inherited organization %q", records[1].OrgName)
 	}
 	if records[1].CanAllocate {
 		t.Fatal("expected numeric Can-Allocate value 0 to parse as false")
+	}
+	if records[1].PostalCode != "" {
+		t.Fatalf("second record inherited postal code %q", records[1].PostalCode)
+	}
+}
+
+func TestParseRegistryResponsePreservesAlphanumericPostalCode(t *testing.T) {
+	records, err := parseRegistryResponse("Org-ID: EXAMPLE\nPostal-Code: SW1A 1AA\n")
+	if err != nil {
+		t.Fatalf("parse registry response: %v", err)
+	}
+	if got, want := records[0].PostalCode, "SW1A 1AA"; got != want {
+		t.Fatalf("postal code: got %q, want %q", got, want)
+	}
+}
+
+func TestRegistryPostalCodeJSONIsText(t *testing.T) {
+	tests := []struct {
+		name       string
+		postalCode string
+	}{
+		{name: "leading zero", postalCode: "01234"},
+		{name: "alphanumeric", postalCode: "SW1A 1AA"},
+		{name: "missing", postalCode: ""},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			encoded, err := json.Marshal(Registry{PostalCode: test.postalCode})
+			if err != nil {
+				t.Fatalf("marshal registry: %v", err)
+			}
+
+			var output map[string]any
+			if err := json.Unmarshal(encoded, &output); err != nil {
+				t.Fatalf("decode registry JSON: %v", err)
+			}
+			postalCode, ok := output["postal_code"].(string)
+			if !ok {
+				t.Fatalf("postal_code JSON type: got %T, want string", output["postal_code"])
+			}
+			if postalCode != test.postalCode {
+				t.Errorf("postal_code: got %q, want %q", postalCode, test.postalCode)
+			}
+		})
 	}
 }
 

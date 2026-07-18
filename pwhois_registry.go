@@ -12,7 +12,7 @@ import (
 // ASN registry object
 type RegistryRecord struct {
 	Asn      string   `json:"asn"`
-	Registry Registry `json:"routes"`
+	Registry Registry `json:"registry"`
 }
 
 // Channel return object for registry query response
@@ -29,7 +29,7 @@ type Registry struct {
 	CanAllocate  bool      `json:"can_allocate"`
 	Source       string    `json:"source"`
 	Street1      string    `json:"street_1"`
-	PostalCode   float64   `json:"postal_code"`
+	PostalCode   string    `json:"postal_code"`
 	City         string    `json:"city"`
 	Region       string    `json:"region"`
 	Country      string    `json:"country"`
@@ -41,7 +41,7 @@ type Registry struct {
 	AdminHandle0 string    `json:"admin_handle_0"`
 	AbuseHandle0 string    `json:"abuse_handle_0"`
 	TechHandle0  string    `json:"tech_handle_0"`
-	Comment      string    `json:"comment_handle_0"`
+	Comment      string    `json:"comment"`
 }
 
 /*
@@ -121,6 +121,7 @@ func parseRegistryResponse(response string) ([]Registry, error) {
 		registryParsedStruct.CanAllocate = canAllocate
 		registryParsedStruct.Source = responseMap["Source"]
 		registryParsedStruct.Street1 = responseMap["Street-1"]
+		registryParsedStruct.PostalCode = responseMap["Postal-Code"]
 		registryParsedStruct.City = responseMap["City"]
 		registryParsedStruct.Region = responseMap["Region"]
 		registryParsedStruct.Country = responseMap["Country"]
