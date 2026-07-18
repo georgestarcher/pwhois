@@ -11,12 +11,12 @@ import (
 // BGP netblock object
 type NetblockRecord struct {
 	Asn       string     `json:"asn"`
-	OriginAs  string     `json:"origin_as"`
+	OriginAs  string     `json:"origin_asn"`
 	ASSource  string     `json:"as_source"`
 	OrgID     string     `json:"org_id"`
 	Org       int64      `json:"org"`
 	AS        int64      `json:"as"`
-	OrgName   string     `json:"org_nam"`
+	OrgName   string     `json:"org_name"`
 	OrgSource string     `json:"org_source"`
 	Netblocks []Netblock `json:"blocks"`
 }

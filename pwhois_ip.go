@@ -26,8 +26,8 @@ type WhoIs struct {
 	Region              string    `json:"region"`
 	Country             string    `json:"country"`
 	CountryCode         string    `json:"country_code"`
-	RouteOriginatedDate time.Time `json:"route_orginated_date"`
-	RouteOriginatedTS   int64     `json:"route_orginated_ts"`
+	RouteOriginatedDate time.Time `json:"route_originated_date"`
+	RouteOriginatedTS   int64     `json:"route_originated_ts"`
 }
 
 // Channel return object for ip query response
