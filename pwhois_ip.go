@@ -1,7 +1,6 @@
 package pwhois
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -58,9 +57,9 @@ func (server *WhoisServer) FormatIpQuery(values []string) (string, error) {
 
 	// check slice sizes and build query string
 	if len(deduplicatedValues) == 0 {
-		return "", errors.New("no valid values provided")
+		return "", invalidInputError("at least one valid IP address is required")
 	} else if len(deduplicatedValues) > server.BatchMaxSize {
-		return "", fmt.Errorf("values slice larger than maximum: %v", server.BatchMaxSize)
+		return "", invalidInputError(fmt.Sprintf("IP batch exceeds maximum of %d addresses", server.BatchMaxSize))
 	} else if len(deduplicatedValues) == 1 {
 		queryString = queryString + fmt.Sprintf("%s\n", deduplicatedValues[0])
 		return queryString, nil
@@ -73,8 +72,16 @@ func (server *WhoisServer) FormatIpQuery(values []string) (string, error) {
 	return queryString, nil
 }
 
-// Parse response string into slice of WhoIs records
+// Parse response string into slice of WhoIs records.
 func parseIpResponse(response string) ([]WhoIs, error) {
+	records, err := parseIPResponseData(response)
+	if err != nil {
+		return nil, malformedResponseError(err)
+	}
+	return records, nil
+}
+
+func parseIPResponseData(response string) ([]WhoIs, error) {
 
 	var responseWhoIs []WhoIs
 	responseRecords := strings.Split(response, "\n\n")
@@ -82,7 +89,7 @@ func parseIpResponse(response string) ([]WhoIs, error) {
 	// Break the records apart and into the WhoIs structs
 	// One record will be returned as a slice of one WhoIs member
 	if len(response) == 0 || len(responseRecords) == 0 {
-		return nil, fmt.Errorf("no records returned")
+		return nil, noRecordsError("IP lookup")
 	}
 	for recordIndex, record := range responseRecords {
 		if len(record) == 0 {
@@ -143,6 +150,9 @@ func parseIpResponse(response string) ([]WhoIs, error) {
 		whoIsParsedStruct.RouteOriginatedTS = routeOriginatedTS
 		responseWhoIs = append(responseWhoIs, whoIsParsedStruct)
 	}
+	if len(responseWhoIs) == 0 {
+		return nil, noRecordsError("IP lookup")
+	}
 	return responseWhoIs, nil
 }
 
@@ -159,43 +169,16 @@ func (server WhoisServer) LookupIP(query string, c chan IpLookupResponse) {
 
 	var Answer []WhoIs
 
-	// Check for pwhois server connection
-	if server.Connection == nil {
-		c <- IpLookupResponse{Answer, fmt.Errorf("execute Connect method to establish connection")}
-		return
-	}
-	if err := server.setLookupDeadline(); err != nil {
-		c <- IpLookupResponse{Answer, err}
-		return
-	}
-
-	// Post query to pwhois server
-	address_bytes := []byte(query)
-	_, err := server.Connection.Write(address_bytes)
+	response, err := server.executeQuery("lookup IP", query)
 	if err != nil {
 		c <- IpLookupResponse{Answer, err}
 		return
 	}
 
-	// Receive query response from pwhois server
-	response, err := server.readLookupResponse()
-	if err != nil {
-		c <- IpLookupResponse{Answer, err}
-		return
-	}
-
-	// Check for daily limit and raise error
-	if strings.Contains(response, "query limit exceeded") {
-		var errString string
-		errString = strings.Replace(response, "Error: Error: ", errString, 1)
-		c <- IpLookupResponse{Answer, fmt.Errorf("%v", errString)}
-		return
-	}
 	// Parse the query response into our response and return
-	// Answer, err = parseIpResponseBytes(buf.Bytes())
 	Answer, err = parseIpResponse(response)
 	if err != nil {
-		c <- IpLookupResponse{Answer, err}
+		c <- IpLookupResponse{Answer, server.operationError("lookup IP", err)}
 		return
 	}
 	c <- IpLookupResponse{Answer, nil}

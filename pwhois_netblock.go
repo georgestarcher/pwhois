@@ -63,7 +63,7 @@ func getNetblockSections(response string) ([]string, []string, error) {
 
 	// Check for empty response
 	if len(response) == 0 {
-		return nil, nil, fmt.Errorf("no records returned")
+		return nil, nil, noRecordsError("netblock lookup")
 	}
 
 	lines := strings.Split(response, "\n")
@@ -85,7 +85,7 @@ func getNetblockSections(response string) ([]string, []string, error) {
 	// Example `Error: No netblock found in registry database for org-id=UAAB`s`
 	for _, line := range header {
 		if strings.HasPrefix(line, "Error: ") {
-			return header, blocks, fmt.Errorf("%s", strings.TrimPrefix(line, "Error: "))
+			return header, blocks, noRecordsError("netblock lookup")
 		}
 	}
 	return header, blocks, nil
@@ -94,7 +94,14 @@ func getNetblockSections(response string) ([]string, []string, error) {
 
 // Parse response string into slice of WhoIs records
 func parseNetblockResponse(asn string, response string) ([]NetblockRecord, error) {
+	records, err := parseNetblockResponseData(asn, response)
+	if err != nil {
+		return nil, malformedResponseError(err)
+	}
+	return records, nil
+}
 
+func parseNetblockResponseData(asn string, response string) ([]NetblockRecord, error) {
 	var responseNetblockRecords []NetblockRecord
 	var responseRecord NetblockRecord
 	var blocks []Netblock
@@ -103,7 +110,7 @@ func parseNetblockResponse(asn string, response string) ([]NetblockRecord, error
 	//responseMap := make(map[string]string)
 
 	if len(response) == 0 {
-		return nil, fmt.Errorf("no records returned")
+		return nil, noRecordsError("netblock lookup")
 	}
 
 	headerStrings, blockStrings, err := getNetblockSections(response)
@@ -211,47 +218,20 @@ func (server WhoisServer) LookupNetblock(asn string, query string, c chan Netblo
 
 	var Answer NetblockRecord
 
-	// Check for pwhois server connection
-	if server.Connection == nil {
-		c <- NetblockLookupResponse{Answer, fmt.Errorf("execute Connect method to establish connection")}
-		return
-	}
-	if err := server.setLookupDeadline(); err != nil {
-		c <- NetblockLookupResponse{Answer, err}
-		return
-	}
-
-	// Post query to pwhois server
-	address_bytes := []byte(query)
-	_, err := server.Connection.Write(address_bytes)
+	response, err := server.executeQuery("lookup netblock", query)
 	if err != nil {
 		c <- NetblockLookupResponse{Answer, err}
-		return
-	}
-
-	// Receive query response from pwhois server
-	response, err := server.readLookupResponse()
-	if err != nil {
-		c <- NetblockLookupResponse{Answer, err}
-		return
-	}
-
-	// Check for daily limit and raise error
-	if strings.Contains(response, "query limit exceeded") {
-		var errString string
-		errString = strings.Replace(response, "Error: Error: ", errString, 1)
-		c <- NetblockLookupResponse{Answer, fmt.Errorf("%v", errString)}
 		return
 	}
 
 	// Parse respose string and return results
 	netblock, err := parseNetblockResponse(asn, response)
 	if err != nil {
-		c <- NetblockLookupResponse{Answer, err}
+		c <- NetblockLookupResponse{Answer, server.operationError("lookup netblock", err)}
 		return
 	}
 	if len(netblock) == 0 {
-		c <- NetblockLookupResponse{Answer, fmt.Errorf("no records returned")}
+		c <- NetblockLookupResponse{Answer, server.operationError("lookup netblock", noRecordsError("netblock lookup"))}
 		return
 	}
 

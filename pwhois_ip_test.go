@@ -2,7 +2,7 @@ package pwhois
 
 import (
 	"encoding/binary"
-	"fmt"
+	"errors"
 	"math/rand"
 	"net"
 	"testing"
@@ -42,7 +42,7 @@ func TestFormatIpQuery(t *testing.T) {
 			name:     "InvalidSingleValue",
 			values:   []string{"dolly.bean"},
 			expected: "",
-			err:      fmt.Errorf("no valid values provided"),
+			err:      ErrInvalidInput,
 		},
 		{
 			name:     "SingleIpValue",
@@ -60,7 +60,7 @@ func TestFormatIpQuery(t *testing.T) {
 			name:     "OverMaxValues",
 			values:   overCapactitySlice,
 			expected: "",
-			err:      fmt.Errorf("values slice larger than maximum: %v", server.BatchMaxSize),
+			err:      ErrInvalidInput,
 		},
 	}
 
@@ -68,11 +68,9 @@ func TestFormatIpQuery(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			got, err := server.FormatIpQuery(c.values)
 			if c.err != nil {
-				t.Log(c.err)
-				if fmt.Sprintf("%v", err) != fmt.Sprintf("%v", c.err) {
-					t.Errorf("Expected %v, got %v", c.err, err)
+				if !errors.Is(err, c.err) {
+					t.Errorf("error = %v, want errors.Is(..., %v)", err, c.err)
 				}
-				t.Logf("%v", err)
 			}
 
 			if got != c.expected {
