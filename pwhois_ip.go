@@ -1,10 +1,8 @@
 package pwhois
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"strings"
 	"time"
@@ -180,23 +178,22 @@ func (server WhoisServer) LookupIP(query string, c chan IpLookupResponse) {
 	}
 
 	// Receive query response from pwhois server
-	var buf bytes.Buffer
-	_, err = io.Copy(&buf, server.Connection)
+	response, err := server.readLookupResponse()
 	if err != nil {
 		c <- IpLookupResponse{Answer, err}
 		return
 	}
 
 	// Check for daily limit and raise error
-	if strings.Contains(buf.String(), "query limit exceeded") {
+	if strings.Contains(response, "query limit exceeded") {
 		var errString string
-		errString = strings.Replace(buf.String(), "Error: Error: ", errString, 1)
+		errString = strings.Replace(response, "Error: Error: ", errString, 1)
 		c <- IpLookupResponse{Answer, fmt.Errorf("%v", errString)}
 		return
 	}
 	// Parse the query response into our response and return
 	// Answer, err = parseIpResponseBytes(buf.Bytes())
-	Answer, err = parseIpResponse(buf.String())
+	Answer, err = parseIpResponse(response)
 	if err != nil {
 		c <- IpLookupResponse{Answer, err}
 		return

@@ -31,6 +31,11 @@ func TestSetDefaultValues(t *testing.T) {
 			got:      fmt.Sprintf("%v", server.BatchMaxSize),
 			expected: "500",
 		},
+		{
+			name:     "MaxResponseBytes",
+			got:      fmt.Sprintf("%v", server.MaxResponseBytes),
+			expected: fmt.Sprintf("%v", DefaultMaxResponseBytes),
+		},
 	}
 
 	for _, c := range cases {

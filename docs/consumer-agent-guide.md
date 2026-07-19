@@ -37,7 +37,7 @@ the PWHOIS query and response format.
 
 Use the query formatter instead of constructing wire text manually. ASN
 formatters accept decimal input with an optional `AS` prefix. The default IP
-batch limit is 500 addresses.
+batch limit is 500 addresses. Responses are limited to 8 MiB by default.
 
 ## Connection and error handling
 
@@ -71,8 +71,15 @@ if response.Error != nil {
 response exchange; its zero value uses the five-second default. Set it to an
 application-appropriate `time.Duration` before calling `Connect` when a
 different bound is required. The current module has no context-aware high-level
-lookup API; that is tracked in issue #33. Response-size bounds are tracked in
-issue #32.
+lookup API; that is tracked in issue #33.
+
+`WhoisServer.MaxResponseBytes` bounds response data before parsing. Its zero
+value uses `DefaultMaxResponseBytes` (8 MiB), which provides more than 16 KiB
+per result in a maximum 500-address IP batch. Set a positive application-
+specific value before lookup if unusually large RouteView or netblock results
+are expected. If the limit is exceeded, the lookup closes the connection and
+returns a `*ResponseTooLargeError`. Detect it with
+`errors.Is(err, pwhois.ErrResponseTooLarge)`; do not compare error strings.
 
 Handle connection, write, read, rate-limit, and parser errors as normal
 application outcomes. Do not silently retry rate-limit errors, share one
@@ -92,7 +99,7 @@ synthetic/reserved documentation values such as `192.0.2.1` in examples.
 
 1. Confirm that native PWHOIS is the required protocol and select one lookup.
 2. Inspect the chosen module version and its formatter and response type.
-3. Set an application-appropriate timeout and rate-limit policy.
+3. Set application-appropriate timeout, response-size, and rate-limit policy.
 4. Close the connection, check every returned error, and test malformed or
    unavailable-server behavior in the application.
 5. Keep orchestration, retries, logging, credentials, storage, and any action

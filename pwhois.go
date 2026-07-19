@@ -3,6 +3,7 @@ package pwhois
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"reflect"
 	"regexp"
@@ -25,6 +26,32 @@ const BatchStart string = "begin\n"
 
 // Query string for ip batch query end
 const BatchEnd string = "end\n"
+
+// DefaultMaxResponseBytes is the maximum response size used when
+// WhoisServer.MaxResponseBytes is zero. Eight MiB provides more than 16 KiB
+// per result in the documented 500-address IP batch while bounding memory
+// consumed by an untrusted PWHOIS server.
+const DefaultMaxResponseBytes int64 = 8 * 1024 * 1024
+
+const responseReadChunkSize = 32 * 1024
+
+// ErrResponseTooLarge identifies a PWHOIS response that exceeded the
+// configured maximum size. Use errors.Is to test lookup errors for this value.
+var ErrResponseTooLarge = errors.New("pwhois response exceeds maximum size")
+
+// ResponseTooLargeError reports the configured response-size limit without
+// retaining or exposing remote response content.
+type ResponseTooLargeError struct {
+	Limit int64
+}
+
+func (err *ResponseTooLargeError) Error() string {
+	return fmt.Sprintf("%s: limit %d bytes", ErrResponseTooLarge, err.Limit)
+}
+
+func (err *ResponseTooLargeError) Unwrap() error {
+	return ErrResponseTooLarge
+}
 
 // Utility function to deduplicate values
 func removeDuplicate[T string | int](sliceList []T) []T {
@@ -122,8 +149,11 @@ type WhoisServer struct {
 	BatchMaxSize int    `default:"500"`
 	// Timeout bounds connection establishment and each lookup's complete I/O
 	// exchange. A zero value uses SocketTimeout.
-	Timeout    time.Duration
-	Connection net.Conn
+	Timeout time.Duration
+	// MaxResponseBytes bounds response data read before parsing. A value less
+	// than or equal to zero uses DefaultMaxResponseBytes.
+	MaxResponseBytes int64
+	Connection       net.Conn
 }
 
 // Return full DNS server socket Aadress
@@ -163,6 +193,9 @@ func (server *WhoisServer) SetDefaultValues() {
 	if server.Timeout == 0 {
 		server.Timeout = time.Second * time.Duration(SocketTimeout)
 	}
+	if server.MaxResponseBytes <= 0 {
+		server.MaxResponseBytes = DefaultMaxResponseBytes
+	}
 }
 
 func (server WhoisServer) timeout() time.Duration {
@@ -179,6 +212,74 @@ func (server WhoisServer) timeout() time.Duration {
 // indefinitely.
 func (server WhoisServer) setLookupDeadline() error {
 	return server.Connection.SetDeadline(time.Now().Add(server.timeout()))
+}
+
+func (server WhoisServer) responseSizeLimit() int64 {
+	if server.MaxResponseBytes > 0 {
+		return server.MaxResponseBytes
+	}
+
+	return DefaultMaxResponseBytes
+}
+
+// readLookupResponse reads remote input into a strictly capacity-controlled
+// raw-response buffer. An over-limit connection is closed because its unread
+// response cannot be safely reused.
+func (server WhoisServer) readLookupResponse() (string, error) {
+	limit := server.responseSizeLimit()
+	response, err := readBoundedResponse(server.Connection, limit)
+	if err != nil {
+		if errors.Is(err, ErrResponseTooLarge) {
+			_ = server.Connection.Close()
+		}
+		return "", err
+	}
+
+	return string(response), nil
+}
+
+func readBoundedResponse(reader io.Reader, limit int64) ([]byte, error) {
+	initialCapacity := responseReadChunkSize
+	if limit < int64(initialCapacity) {
+		initialCapacity = int(limit)
+	}
+	response := make([]byte, 0, initialCapacity)
+	chunk := make([]byte, responseReadChunkSize)
+
+	for {
+		read, err := reader.Read(chunk)
+		if read > 0 {
+			required := len(response) + read
+			if int64(required) > limit {
+				return nil, &ResponseTooLargeError{Limit: limit}
+			}
+
+			if required > cap(response) {
+				nextCapacity := cap(response) * 2
+				if nextCapacity < required {
+					nextCapacity = required
+				}
+				if int64(nextCapacity) > limit {
+					nextCapacity = int(limit)
+				}
+
+				grown := make([]byte, len(response), nextCapacity)
+				copy(grown, response)
+				response = grown
+			}
+
+			originalLength := len(response)
+			response = response[:required]
+			copy(response[originalLength:], chunk[:read])
+		}
+
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return response, nil
+			}
+			return nil, err
+		}
+	}
 }
 
 // Establish connection to the pwhois server
