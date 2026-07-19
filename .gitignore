@@ -1,0 +1,21 @@
+.DS_Store
+
+# Go build, test, coverage, and profiling outputs.
+*.test
+*.out
+*.prof
+coverage.html
+coverage.out
+bin/
+dist/
+
+# Local PWHOIS response captures may contain registry or contact data.
+testdata/private/
+testdata/live/
+
+# Editor and local environment files.
+.idea/
+.vscode/
+*.swp
+*.swo
+*.tmp
