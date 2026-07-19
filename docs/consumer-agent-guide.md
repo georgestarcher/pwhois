@@ -81,6 +81,14 @@ are expected. If the limit is exceeded, the lookup closes the connection and
 returns a `*ResponseTooLargeError`. Detect it with
 `errors.Is(err, pwhois.ErrResponseTooLarge)`; do not compare error strings.
 
+Use `errors.Is` to classify every failure: `ErrInvalidInput`, `ErrConnection`,
+`ErrTimeout`, `ErrCanceled`, `ErrRateLimited`, `ErrResponseTooLarge`,
+`ErrMalformedResponse`, and `ErrNoRecords`. `Connect` and lookup failures are
+wrapped in `*OperationError`, so `errors.As` can retrieve the operation and
+configured endpoint without losing the underlying transport or parser cause.
+Do not compare error strings or expose full server response content in calling
+application logs.
+
 Handle connection, write, read, rate-limit, and parser errors as normal
 application outcomes. Do not silently retry rate-limit errors, share one
 connection among unrelated lookups, or treat a partial result as successful.
@@ -100,7 +108,7 @@ synthetic/reserved documentation values such as `192.0.2.1` in examples.
 1. Confirm that native PWHOIS is the required protocol and select one lookup.
 2. Inspect the chosen module version and its formatter and response type.
 3. Set application-appropriate timeout, response-size, and rate-limit policy.
-4. Close the connection, check every returned error, and test malformed or
-   unavailable-server behavior in the application.
+4. Close the connection, classify every returned error with `errors.Is`, and
+   test malformed or unavailable-server behavior in the application.
 5. Keep orchestration, retries, logging, credentials, storage, and any action
    taken from results in application code.

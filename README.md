@@ -28,6 +28,7 @@ Each lookup uses a TCP connection to a PWHOIS server. Close the connection when 
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 
@@ -53,6 +54,13 @@ func main() {
 	response := <-responses
 
 	if response.Error != nil {
+		if errors.Is(response.Error, pwhois.ErrRateLimited) {
+			// Apply the calling application's rate-limit policy.
+		}
+		var operationError *pwhois.OperationError
+		if errors.As(response.Error, &operationError) {
+			log.Printf("%s against %s failed", operationError.Operation, operationError.Server)
+		}
 		log.Fatal(response.Error)
 	}
 
@@ -72,6 +80,30 @@ the configured limit but does not include remote response content. The 8 MiB
 default provides more than 16 KiB per result for a maximum 500-address IP
 batch. RouteView or netblock queries with unusually large legitimate results
 may require a higher application-specific limit.
+
+## Error handling
+
+Every formatter, `Connect`, and lookup response error uses a stable class that
+can be tested with `errors.Is`; error wording is not an API contract.
+
+| Error class | Meaning |
+| --- | --- |
+| `ErrInvalidInput` | A query formatter rejected caller input. |
+| `ErrConnection` | The connection is absent or a network operation failed. |
+| `ErrTimeout` / `ErrCanceled` | The lookup deadline expired or its connection reported cancellation. |
+| `ErrRateLimited` | The PWHOIS server reported its query limit. |
+| `ErrResponseTooLarge` | The response exceeded `MaxResponseBytes`. |
+| `ErrMalformedResponse` | A non-empty response could not be parsed safely. |
+| `ErrNoRecords` | The server returned no records for the lookup. |
+
+`Connect` and lookup methods wrap failures in `*pwhois.OperationError`, which
+contains the operation and configured endpoint while preserving the stable
+class and underlying transport/parser error. Use `errors.As` only when that
+additional context is useful, as shown in the example above.
+
+Rate-limit and remote parser failures never include the full server response
+in the returned error. `*pwhois.ResponseTooLargeError` additionally reports
+the configured byte limit.
 
 AI coding assistants integrating this module should use the
 [consumer-agent integration guide](docs/consumer-agent-guide.md). Repository

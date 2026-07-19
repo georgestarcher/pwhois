@@ -14,12 +14,13 @@ released module to another application must start with
   response format; add format-specific implementation and tests first.
 - The exported Go API, JSON field names, README, and deterministic tests are
   consumer-facing contracts. Keep them aligned when behavior changes. Preserve
-  the serialization conventions corrected in #22 and #25 deliberately; see
-  the tracked error and compatibility work in issues #34 and #36.
+  the serialization conventions corrected in #22 and #25 deliberately; use
+  the stable error taxonomy and `OperationError` contract from #34, and see
+  issue #36 for compatibility work.
 - Treat every server response as untrusted. Handle malformed, truncated,
   delimiter-containing, and oversized values without panics or data loss.
   All lookups enforce `WhoisServer.MaxResponseBytes`; preserve the shared
-  bounded-reader semantics and the `ErrResponseTooLarge` error contract.
+  bounded-reader semantics and the stable error contract.
 - Do not add library stdout output. Return errors through the documented
   response types and keep logging, retries, orchestration, and policy in the
   calling application.

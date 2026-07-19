@@ -1,7 +1,7 @@
 package pwhois
 
 import (
-	"fmt"
+	"errors"
 	"testing"
 )
 
@@ -21,13 +21,13 @@ func TestFormatNetblockQuery(t *testing.T) {
 			name:     "EmptyValue",
 			value:    "",
 			expected: "",
-			err:      fmt.Errorf("invalid ASN value"),
+			err:      ErrInvalidInput,
 		},
 		{
 			name:     "InvalidValue",
 			value:    "8.8.8.8",
 			expected: "",
-			err:      fmt.Errorf("invalid ASN value"),
+			err:      ErrInvalidInput,
 		},
 		{
 			name:     "ValidValue",
@@ -41,11 +41,9 @@ func TestFormatNetblockQuery(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			got, err := server.FormatNetblockQuery(c.value)
 			if c.err != nil {
-				t.Log(c.err)
-				if fmt.Sprintf("%v", err) != fmt.Sprintf("%v", c.err) {
-					t.Errorf("Expected %v, got %v", c.err, err)
+				if !errors.Is(err, c.err) {
+					t.Errorf("error = %v, want errors.Is(..., %v)", err, c.err)
 				}
-				t.Logf("%v", err)
 			}
 
 			if got != c.expected {

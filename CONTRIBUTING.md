@@ -41,5 +41,7 @@ or rate-limit artifacts. Keep private experiments under ignored paths such as
 
 Exported Go symbols, JSON field names, error behavior, and documented network
 contracts are consumer-facing. Preserve them deliberately and call out any
-compatibility or release impact in the pull request. Formal changelog and
-release automation work is tracked in issue #37.
+compatibility or release impact in the pull request. Stable error sentinels and
+typed error metadata require `errors.Is`/`errors.As` compatibility tests and a
+release-impact note in the pull request. Formal changelog and release
+automation work is tracked in issue #37.

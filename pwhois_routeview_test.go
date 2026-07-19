@@ -1,7 +1,7 @@
 package pwhois
 
 import (
-	"fmt"
+	"errors"
 	"testing"
 )
 
@@ -21,7 +21,7 @@ func TestFormatRouteviewQuery(t *testing.T) {
 			name:     "InvalidValue",
 			value:    "",
 			expected: "",
-			err:      fmt.Errorf("invalid ASN value"),
+			err:      ErrInvalidInput,
 		},
 		{
 			name:     "ValidAsn",
@@ -35,11 +35,9 @@ func TestFormatRouteviewQuery(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			got, err := server.FormatRouteViewQuery(c.value)
 			if c.err != nil {
-				t.Log(c.err)
-				if fmt.Sprintf("%v", err) != fmt.Sprintf("%v", c.err) {
-					t.Errorf("Expected %v, got %v", c.err, err)
+				if !errors.Is(err, c.err) {
+					t.Errorf("error = %v, want errors.Is(..., %v)", err, c.err)
 				}
-				t.Logf("%v", err)
 			}
 
 			if got != c.expected {

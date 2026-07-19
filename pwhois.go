@@ -1,6 +1,7 @@
 package pwhois
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -35,13 +36,47 @@ const DefaultMaxResponseBytes int64 = 8 * 1024 * 1024
 
 const responseReadChunkSize = 32 * 1024
 
-// ErrResponseTooLarge identifies a PWHOIS response that exceeded the
-// configured maximum size. Use errors.Is to test lookup errors for this value.
-var ErrResponseTooLarge = errors.New("pwhois response exceeds maximum size")
+// Stable error classes returned by this package. Use errors.Is to branch on a
+// class and errors.As to retrieve OperationError or ResponseTooLargeError
+// metadata without comparing error strings.
+var (
+	ErrInvalidInput      = errors.New("pwhois invalid input")
+	ErrConnection        = errors.New("pwhois connection failure")
+	ErrTimeout           = errors.New("pwhois lookup timed out")
+	ErrCanceled          = errors.New("pwhois lookup canceled")
+	ErrRateLimited       = errors.New("pwhois server rate limit exceeded")
+	ErrResponseTooLarge  = errors.New("pwhois response exceeds maximum size")
+	ErrMalformedResponse = errors.New("pwhois malformed response")
+	ErrNoRecords         = errors.New("pwhois no records returned")
+)
+
+// OperationError adds lookup operation and server context while preserving the
+// stable error class and the underlying cause through errors.Is and errors.As.
+type OperationError struct {
+	// Operation identifies the attempted action, such as "lookup IP" or
+	// "connect".
+	Operation string
+	// Server is the configured PWHOIS endpoint when one was supplied.
+	Server string
+	// Err is the classified error and optional underlying cause.
+	Err error
+}
+
+func (err *OperationError) Error() string {
+	if err.Server == "" {
+		return fmt.Sprintf("pwhois %s: %v", err.Operation, err.Err)
+	}
+	return fmt.Sprintf("pwhois %s against %s: %v", err.Operation, err.Server, err.Err)
+}
+
+func (err *OperationError) Unwrap() error {
+	return err.Err
+}
 
 // ResponseTooLargeError reports the configured response-size limit without
 // retaining or exposing remote response content.
 type ResponseTooLargeError struct {
+	// Limit is the configured maximum response size in bytes.
 	Limit int64
 }
 
@@ -51,6 +86,38 @@ func (err *ResponseTooLargeError) Error() string {
 
 func (err *ResponseTooLargeError) Unwrap() error {
 	return ErrResponseTooLarge
+}
+
+func invalidInputError(description string) error {
+	return fmt.Errorf("%w: %s", ErrInvalidInput, description)
+}
+
+func noRecordsError(resource string) error {
+	return fmt.Errorf("%w: %s", ErrNoRecords, resource)
+}
+
+func malformedResponseError(err error) error {
+	if errors.Is(err, ErrNoRecords) || errors.Is(err, ErrMalformedResponse) {
+		return err
+	}
+	return fmt.Errorf("%w: %w", ErrMalformedResponse, err)
+}
+
+type responseValueError struct {
+	field string
+	err   error
+}
+
+func (err *responseValueError) Error() string {
+	return fmt.Sprintf("invalid %s value", err.field)
+}
+
+func (err *responseValueError) Unwrap() error {
+	return err.err
+}
+
+func invalidResponseValue(field string, err error) error {
+	return &responseValueError{field: field, err: err}
 }
 
 // Utility function to deduplicate values
@@ -80,7 +147,7 @@ func normalizeASN(value string) (string, error) {
 		asn = asn[2:]
 	}
 	if !isOnlyDigits(asn) {
-		return "", errors.New("invalid ASN value")
+		return "", invalidInputError("ASN must be decimal digits with an optional AS prefix")
 	}
 
 	return asn, nil
@@ -108,14 +175,16 @@ func parseResponseTime(field, value string, layouts ...string) (time.Time, error
 		return time.Time{}, nil
 	}
 
+	var parseError error
 	for _, layout := range layouts {
 		parsed, err := time.Parse(layout, value)
 		if err == nil {
 			return parsed, nil
 		}
+		parseError = err
 	}
 
-	return time.Time{}, fmt.Errorf("invalid %s value", field)
+	return time.Time{}, invalidResponseValue(field, parseError)
 }
 
 func parseResponseInt64(field, value string) (int64, error) {
@@ -125,7 +194,7 @@ func parseResponseInt64(field, value string) (int64, error) {
 
 	parsed, err := strconv.ParseInt(value, 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("invalid %s value: %w", field, err)
+		return 0, invalidResponseValue(field, err)
 	}
 	return parsed, nil
 }
@@ -137,7 +206,7 @@ func parseResponseFloat64(field, value string) (float64, error) {
 
 	parsed, err := strconv.ParseFloat(value, 64)
 	if err != nil {
-		return 0, fmt.Errorf("invalid %s value: %w", field, err)
+		return 0, invalidResponseValue(field, err)
 	}
 	return parsed, nil
 }
@@ -212,6 +281,61 @@ func (server WhoisServer) timeout() time.Duration {
 // indefinitely.
 func (server WhoisServer) setLookupDeadline() error {
 	return server.Connection.SetDeadline(time.Now().Add(server.timeout()))
+}
+
+func (server WhoisServer) operationError(operation string, err error) error {
+	endpoint := ""
+	if server.Server != "" && server.Port != 0 {
+		endpoint = server.ServerAddressString()
+	}
+	return &OperationError{Operation: operation, Server: endpoint, Err: err}
+}
+
+func classifyTransportError(err error) error {
+	switch {
+	case errors.Is(err, context.Canceled):
+		return fmt.Errorf("%w: %w", ErrCanceled, err)
+	case errors.Is(err, context.DeadlineExceeded):
+		return fmt.Errorf("%w: %w", ErrTimeout, err)
+	}
+
+	var networkError net.Error
+	if errors.As(err, &networkError) && networkError.Timeout() {
+		return fmt.Errorf("%w: %w", ErrTimeout, err)
+	}
+
+	return fmt.Errorf("%w: %w", ErrConnection, err)
+}
+
+func isRateLimitedResponse(response string) bool {
+	return strings.Contains(strings.ToLower(response), "query limit exceeded")
+}
+
+// executeQuery applies one consistent connection, deadline, transport, and
+// rate-limit error contract to every native PWHOIS lookup.
+func (server WhoisServer) executeQuery(operation, query string) (string, error) {
+	if server.Connection == nil {
+		return "", server.operationError(operation, ErrConnection)
+	}
+	if err := server.setLookupDeadline(); err != nil {
+		return "", server.operationError(operation, classifyTransportError(err))
+	}
+	if _, err := server.Connection.Write([]byte(query)); err != nil {
+		return "", server.operationError(operation, classifyTransportError(err))
+	}
+
+	response, err := server.readLookupResponse()
+	if err != nil {
+		if errors.Is(err, ErrResponseTooLarge) {
+			return "", server.operationError(operation, err)
+		}
+		return "", server.operationError(operation, classifyTransportError(err))
+	}
+	if isRateLimitedResponse(response) {
+		return "", server.operationError(operation, ErrRateLimited)
+	}
+
+	return response, nil
 }
 
 func (server WhoisServer) responseSizeLimit() int64 {
@@ -293,7 +417,7 @@ func (server *WhoisServer) Connect() error {
 	var err error
 	server.Connection, err = whoisDialer.Dial("tcp", server.ServerAddressString())
 	if err != nil {
-		return err
+		return server.operationError("connect", classifyTransportError(err))
 	}
 	return nil
 }

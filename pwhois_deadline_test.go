@@ -57,6 +57,9 @@ func assertTimeout(t *testing.T, err error) {
 	if err == nil {
 		t.Fatal("lookup succeeded against a stalled server")
 	}
+	if !errors.Is(err, ErrTimeout) {
+		t.Fatalf("lookup error = %v, want ErrTimeout", err)
+	}
 
 	var networkError net.Error
 	if !errors.As(err, &networkError) || !networkError.Timeout() {

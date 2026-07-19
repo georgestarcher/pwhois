@@ -62,14 +62,21 @@ func (server *WhoisServer) FormatRegistryQuery(asn string) (string, error) {
 
 // Parse response string into slice of WhoIs records
 func parseRegistryResponse(response string) ([]Registry, error) {
+	records, err := parseRegistryResponseData(response)
+	if err != nil {
+		return nil, malformedResponseError(err)
+	}
+	return records, nil
+}
 
+func parseRegistryResponseData(response string) ([]Registry, error) {
 	var responseRegistry []Registry
 	responseRecords := strings.Split(response, "\n\n")
 
 	// Break the records apart and into the WhoIs structs
 	// One record will be returned as a slice of one WhoIs member
 	if len(response) == 0 || len(responseRecords) == 0 {
-		return nil, fmt.Errorf("no records returned")
+		return nil, noRecordsError("registry lookup")
 	}
 	for recordIndex, record := range responseRecords {
 		if len(record) == 0 {
@@ -135,6 +142,9 @@ func parseRegistryResponse(response string) ([]Registry, error) {
 
 		responseRegistry = append(responseRegistry, registryParsedStruct)
 	}
+	if len(responseRegistry) == 0 {
+		return nil, noRecordsError("registry lookup")
+	}
 	return responseRegistry, nil
 }
 
@@ -147,7 +157,7 @@ func parseCanAllocate(value string) (bool, error) {
 	default:
 		parsed, err := strconv.ParseBool(value)
 		if err != nil {
-			return false, fmt.Errorf("invalid Can-Allocate value: %w", err)
+			return false, invalidResponseValue("Can-Allocate", err)
 		}
 		return parsed, nil
 	}
@@ -168,46 +178,19 @@ func (server WhoisServer) LookupRegistry(asn string, query string, c chan Regist
 
 	var Answer RegistryRecord
 
-	// Check for pwhois server connection
-	if server.Connection == nil {
-		c <- RegistryLookupResponse{Answer, fmt.Errorf("execute Connect method to establish connection")}
-		return
-	}
-	if err := server.setLookupDeadline(); err != nil {
-		c <- RegistryLookupResponse{Answer, err}
-		return
-	}
-
-	// Post query to pwhois server
-	address_bytes := []byte(query)
-	_, err := server.Connection.Write(address_bytes)
+	response, err := server.executeQuery("lookup registry", query)
 	if err != nil {
 		c <- RegistryLookupResponse{Answer, err}
-		return
-	}
-
-	// Receive query response from pwhois server
-	response, err := server.readLookupResponse()
-	if err != nil {
-		c <- RegistryLookupResponse{Answer, err}
-		return
-	}
-
-	// Check for daily limit and raise error
-	if strings.Contains(response, "query limit exceeded") {
-		var errString string
-		errString = strings.Replace(response, "Error: Error: ", errString, 1)
-		c <- RegistryLookupResponse{Answer, fmt.Errorf("%v", errString)}
 		return
 	}
 
 	registry, err := parseRegistryResponse(response)
 	if err != nil {
-		c <- RegistryLookupResponse{Answer, err}
+		c <- RegistryLookupResponse{Answer, server.operationError("lookup registry", err)}
 		return
 	}
 	if len(registry) == 0 {
-		c <- RegistryLookupResponse{Answer, fmt.Errorf("no records returned")}
+		c <- RegistryLookupResponse{Answer, server.operationError("lookup registry", noRecordsError("registry lookup"))}
 		return
 	}
 

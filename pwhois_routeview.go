@@ -48,16 +48,23 @@ func (server *WhoisServer) FormatRouteViewQuery(asn string) (string, error) {
 
 // Parse response string into slice of BGP routing records
 func parseBgpResponse(response string) ([]BGPRoute, error) {
-	if len(response) == 0 {
-		return nil, fmt.Errorf("no records returned")
+	routes, err := parseBGPResponseData(response)
+	if err != nil {
+		return nil, malformedResponseError(err)
+	}
+	return routes, nil
+}
 
+func parseBGPResponseData(response string) ([]BGPRoute, error) {
+	if len(response) == 0 {
+		return nil, noRecordsError("RouteView lookup")
 	}
 	routes, err := parseBGPData(response)
 	if err != nil {
 		return nil, err
 	}
 	if len(routes) == 0 {
-		return nil, fmt.Errorf("no routes returned")
+		return nil, noRecordsError("RouteView lookup")
 	}
 	return routes, nil
 }
@@ -115,7 +122,7 @@ func parseASPath(asPathFields []string) ([]int, error) {
 	for index, asStr := range asPathFields {
 		as, err := strconv.Atoi(asStr)
 		if err != nil {
-			return nil, fmt.Errorf("invalid AS path value at position %d: %w", index+1, err)
+			return nil, invalidResponseValue(fmt.Sprintf("AS path value at position %d", index+1), err)
 		}
 		asPath = append(asPath, as)
 	}
@@ -137,36 +144,9 @@ func (server WhoisServer) LookupRouteView(asn string, query string, c chan BGPLo
 
 	var Answer BGPRoutes
 
-	// Check for pwhois server connection
-	if server.Connection == nil {
-		c <- BGPLookupResponse{Answer, fmt.Errorf("execute Connect method to establish connection")}
-		return
-	}
-	if err := server.setLookupDeadline(); err != nil {
-		c <- BGPLookupResponse{Answer, err}
-		return
-	}
-
-	// Post query to pwhois server
-	address_bytes := []byte(query)
-	_, err := server.Connection.Write(address_bytes)
+	response, err := server.executeQuery("lookup RouteView", query)
 	if err != nil {
 		c <- BGPLookupResponse{Answer, err}
-		return
-	}
-
-	// Receive query response from pwhois server
-	response, err := server.readLookupResponse()
-	if err != nil {
-		c <- BGPLookupResponse{Answer, err}
-		return
-	}
-
-	// Check for daily limit and raise error
-	if strings.Contains(response, "query limit exceeded") {
-		var errString string
-		errString = strings.Replace(response, "Error: Error: ", errString, 1)
-		c <- BGPLookupResponse{Answer, fmt.Errorf("%v", errString)}
 		return
 	}
 
@@ -175,7 +155,7 @@ func (server WhoisServer) LookupRouteView(asn string, query string, c chan BGPLo
 	Answer.Routes = routes
 
 	if err != nil {
-		c <- BGPLookupResponse{Answer, err}
+		c <- BGPLookupResponse{Answer, server.operationError("lookup RouteView", err)}
 		return
 	}
 
