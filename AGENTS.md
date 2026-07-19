@@ -18,7 +18,8 @@ released module to another application must start with
   the tracked error and compatibility work in issues #34 and #36.
 - Treat every server response as untrusted. Handle malformed, truncated,
   delimiter-containing, and oversized values without panics or data loss.
-  Response-size limits are tracked in #32.
+  All lookups enforce `WhoisServer.MaxResponseBytes`; preserve the shared
+  bounded-reader semantics and the `ErrResponseTooLarge` error contract.
 - Do not add library stdout output. Return errors through the documented
   response types and keep logging, retries, orchestration, and policy in the
   calling application.

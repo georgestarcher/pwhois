@@ -22,7 +22,7 @@ go get github.com/georgestarcher/pwhois
 
 ## Usage
 
-Each lookup uses a TCP connection to a PWHOIS server. Close the connection when the lookup is complete. By default, connection establishment and the complete lookup exchange time out after five seconds; set `WhoisServer.Timeout` to use a different `time.Duration`. Batch IP lookups accept up to 500 addresses; callers should also respect the selected server's rate limits.
+Each lookup uses a TCP connection to a PWHOIS server. Close the connection when the lookup is complete. By default, connection establishment and the complete lookup exchange time out after five seconds; set `WhoisServer.Timeout` to use a different `time.Duration`. Responses are limited to 8 MiB by default; set `WhoisServer.MaxResponseBytes` to a positive byte count when an application needs a different bound. Batch IP lookups accept up to 500 addresses; callers should also respect the selected server's rate limits.
 
 ```go
 package main
@@ -63,6 +63,15 @@ func main() {
 ```
 
 The other supported lookup types follow the same pattern. Use a separate connected `WhoisServer` for each lookup.
+
+All four lookup methods enforce the same response-size limit before parsing.
+An over-limit response closes its connection and returns a
+`*pwhois.ResponseTooLargeError`; callers can detect the stable failure class
+with `errors.Is(response.Error, pwhois.ErrResponseTooLarge)`. The error reports
+the configured limit but does not include remote response content. The 8 MiB
+default provides more than 16 KiB per result for a maximum 500-address IP
+batch. RouteView or netblock queries with unusually large legitimate results
+may require a higher application-specific limit.
 
 AI coding assistants integrating this module should use the
 [consumer-agent integration guide](docs/consumer-agent-guide.md). Repository

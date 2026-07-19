@@ -1,9 +1,7 @@
 package pwhois
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -189,22 +187,21 @@ func (server WhoisServer) LookupRegistry(asn string, query string, c chan Regist
 	}
 
 	// Receive query response from pwhois server
-	var buf bytes.Buffer
-	_, err = io.Copy(&buf, server.Connection)
+	response, err := server.readLookupResponse()
 	if err != nil {
 		c <- RegistryLookupResponse{Answer, err}
 		return
 	}
 
 	// Check for daily limit and raise error
-	if strings.Contains(buf.String(), "query limit exceeded") {
+	if strings.Contains(response, "query limit exceeded") {
 		var errString string
-		errString = strings.Replace(buf.String(), "Error: Error: ", errString, 1)
+		errString = strings.Replace(response, "Error: Error: ", errString, 1)
 		c <- RegistryLookupResponse{Answer, fmt.Errorf("%v", errString)}
 		return
 	}
 
-	registry, err := parseRegistryResponse(buf.String())
+	registry, err := parseRegistryResponse(response)
 	if err != nil {
 		c <- RegistryLookupResponse{Answer, err}
 		return
