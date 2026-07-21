@@ -577,6 +577,49 @@ func TestCacheCoordinatorCoalescesConcurrentMisses(t *testing.T) {
 	}
 }
 
+func TestCompletedCacheCallHonorsWaitingContext(t *testing.T) {
+	tests := []struct {
+		name      string
+		context   func() context.Context
+		wantError error
+	}{
+		{
+			name: "canceled",
+			context: func() context.Context {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx
+			},
+			wantError: ErrCanceled,
+		},
+		{
+			name: "deadline exceeded",
+			context: func() context.Context {
+				ctx, cancel := context.WithDeadline(context.Background(), cacheTestTime.Add(-time.Second))
+				t.Cleanup(cancel)
+				return ctx
+			},
+			wantError: ErrTimeout,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			call := &cacheCall{
+				result: CacheLookupResult{State: CacheStateHit},
+				err:    errors.New("leader result must not escape"),
+			}
+			result, err := completedCacheCall(test.context(), call)
+			if !errors.Is(err, test.wantError) {
+				t.Fatalf("completedCacheCall() error = %v, want %v", err, test.wantError)
+			}
+			if !result.Coalesced || result.State != "" {
+				t.Fatalf("completedCacheCall() result = %+v, want canceled coalesced result", result)
+			}
+		})
+	}
+}
+
 func TestMemoryCacheCopiesMutableData(t *testing.T) {
 	cache := new(MemoryCache)
 	entry := CacheEnvelope{

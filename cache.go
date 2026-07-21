@@ -685,9 +685,7 @@ func (coordinator *CacheCoordinator) coalescedFetch(ctx context.Context, key str
 		coordinator.mu.Unlock()
 		select {
 		case <-call.done:
-			result := call.result
-			result.Coalesced = true
-			return result, call.err
+			return completedCacheCall(ctx, call)
 		case <-ctx.Done():
 			return CacheLookupResult{Coalesced: true}, classifiedContextError(ctx.Err())
 		}
@@ -704,6 +702,18 @@ func (coordinator *CacheCoordinator) coalescedFetch(ctx context.Context, key str
 	delete(coordinator.inflight, key)
 	coordinator.mu.Unlock()
 	return call.result, call.err
+}
+
+func completedCacheCall(ctx context.Context, call *cacheCall) (CacheLookupResult, error) {
+	// The call and context can become ready together. Recheck cancellation
+	// after receiving the shared result so select cannot return provider or
+	// stale data past this waiter's deadline.
+	if err := ctx.Err(); err != nil {
+		return CacheLookupResult{Coalesced: true}, classifiedContextError(err)
+	}
+	result := call.result
+	result.Coalesced = true
+	return result, call.err
 }
 
 func classifiedContextError(err error) error {
