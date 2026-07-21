@@ -105,6 +105,30 @@ Rate-limit and remote parser failures never include the full server response
 in the returned error. `*pwhois.ResponseTooLargeError` additionally reports
 the configured byte limit.
 
+## Cache foundation
+
+The module includes a source-aware cache contract for applications that build
+context-aware lookup orchestration. `CacheCoordinator` supports bypass,
+read-through, forced refresh, fresh-only, and bounded stale-if-error policies.
+It also coalesces concurrent misses for one canonical key within a process.
+
+The coordinator does **not** change the connection ownership or automatically
+wrap the four existing lookup methods. A calling application supplies a
+context-aware fetch function, a `Cache` backend, and an explicit
+`SourceCachePolicy` for every provider/source. This lets a later high-level
+lookup API use the same contract without making the current channel-based API
+silently retry or cache network operations.
+
+Cache keys include the source, endpoint, protocol, normalized query, options,
+parser version, and result schema version. Stored `CacheEnvelope` values
+contain bounded normalized JSON, timestamps, provider error class, and
+provenance; there is no raw-response field. `MemoryCache` is available for
+process-local use. File, gateway, and Redis implementations can satisfy the
+same `Cache` interface without changing lookup policy.
+
+See the [cache contract guide](docs/cache-contract.md) for policy semantics,
+error handling, and an integration example.
+
 AI coding assistants integrating this module should use the
 [consumer-agent integration guide](docs/consumer-agent-guide.md). Repository
 maintainers should use the [maintainer guide](AGENTS.md).
