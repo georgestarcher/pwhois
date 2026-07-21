@@ -93,6 +93,22 @@ Handle connection, write, read, rate-limit, and parser errors as normal
 application outcomes. Do not silently retry rate-limit errors, share one
 connection among unrelated lookups, or treat a partial result as successful.
 
+## Optional cache orchestration
+
+`CacheCoordinator` is a building block for an application's future
+context-aware lookup layer. It does not automatically wrap `LookupIP`,
+`LookupRouteView`, `LookupRegistry`, or `LookupNetblock`, and it does not change
+their caller-owned connection lifecycle. Do not introduce a goroutine around a
+legacy lookup merely to make it fit the coordinator; use the high-level API
+tracked in issue #33 when it becomes available, or supply an application-owned
+context-aware fetch operation.
+
+If the application uses this cache contract, read the
+[cache contract guide](cache-contract.md). In particular, configure a policy
+for each source, version parser/result schemas in the key, inspect
+`CacheLookupResult.CacheError` and stale metadata, and never put a raw provider
+response in `NormalizedResult`.
+
 ## Server and data boundaries
 
 `SetDefaultValues` configures `whois.pwhois.org:43`, the tested default. A

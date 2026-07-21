@@ -7,6 +7,7 @@ the released API. These guides route readers to the material for their task.
 | --- | --- | --- |
 | Go application developer | [Project README](../README.md) | [Go package documentation](https://pkg.go.dev/github.com/georgestarcher/pwhois) |
 | AI coding assistant integrating the module | [Consumer-agent integration guide](consumer-agent-guide.md) | README usage and the exact version selected in `go.mod` |
+| Application cache implementer | [Cache contract guide](cache-contract.md) | `Cache`, `CacheEnvelope`, and `CacheCoordinator` package documentation |
 | Repository maintainer | [Maintainer guide](../AGENTS.md) | Deterministic tests and the open repository issues |
 
 ## Current validation
