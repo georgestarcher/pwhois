@@ -1,10 +1,8 @@
 package pwhois
 
 import (
-	"bufio"
 	"context"
 	"errors"
-	"io"
 	"net"
 	"strconv"
 	"strings"
@@ -24,53 +22,59 @@ func (connection deadlineErrorConnection) SetDeadline(time.Time) error {
 func lookupErrorCases() []struct {
 	name      string
 	operation string
+	query     string
 	lookup    func(WhoisServer) error
 } {
 	return []struct {
 		name      string
 		operation string
+		query     string
 		lookup    func(WhoisServer) error
 	}{
 		{
 			name:      "IP",
 			operation: "lookup IP",
+			query:     "app=\"GO pwhois Module\"\n192.0.2.1\n",
 			lookup: func(server WhoisServer) error {
 				responses := make(chan IpLookupResponse, 1)
-				server.LookupIP("192.0.2.1\n", responses)
+				server.LookupIP("app=\"GO pwhois Module\"\n192.0.2.1\n", responses)
 				return (<-responses).Error
 			},
 		},
 		{
 			name:      "RouteView",
 			operation: "lookup RouteView",
+			query:     "app=\"GO pwhois Module\" routeview source-as=64500\n",
 			lookup: func(server WhoisServer) error {
 				responses := make(chan BGPLookupResponse, 1)
-				server.LookupRouteView("64500", "routeview source-as=64500\n", responses)
+				server.LookupRouteView("64500", "app=\"GO pwhois Module\" routeview source-as=64500\n", responses)
 				return (<-responses).Error
 			},
 		},
 		{
 			name:      "Registry",
 			operation: "lookup registry",
+			query:     "app=\"GO pwhois Module\" registry source-as=64500\n",
 			lookup: func(server WhoisServer) error {
 				responses := make(chan RegistryLookupResponse, 1)
-				server.LookupRegistry("64500", "registry source-as=64500\n", responses)
+				server.LookupRegistry("64500", "app=\"GO pwhois Module\" registry source-as=64500\n", responses)
 				return (<-responses).Error
 			},
 		},
 		{
 			name:      "Netblock",
 			operation: "lookup netblock",
+			query:     "app=\"GO pwhois Module\" netblock source-as=64500\n",
 			lookup: func(server WhoisServer) error {
 				responses := make(chan NetblockLookupResponse, 1)
-				server.LookupNetblock("64500", "netblock source-as=64500\n", responses)
+				server.LookupNetblock("64500", "app=\"GO pwhois Module\" netblock source-as=64500\n", responses)
 				return (<-responses).Error
 			},
 		},
 	}
 }
 
-func assertOperationError(t *testing.T, err error, operation string) {
+func assertOperationError(t *testing.T, err error, operation, server string) {
 	t.Helper()
 
 	var operationError *OperationError
@@ -80,31 +84,29 @@ func assertOperationError(t *testing.T, err error, operation string) {
 	if operationError.Operation != operation {
 		t.Errorf("operation = %q, want %q", operationError.Operation, operation)
 	}
-	if operationError.Server != "test.pwhois.example:43" {
-		t.Errorf("server = %q, want test.pwhois.example:43", operationError.Server)
+	if operationError.Server != server {
+		t.Errorf("server = %q, want %q", operationError.Server, server)
 	}
 }
 
-func lookupErrorFromResponse(t *testing.T, lookup func(WhoisServer) error, response string, maximumResponseBytes int64) error {
+func lookupErrorFromResponse(t *testing.T, lookupCase struct {
+	name      string
+	operation string
+	query     string
+	lookup    func(WhoisServer) error
+}, response string, maximumResponseBytes int64) (error, string) {
 	t.Helper()
 
-	connection, done := connectScriptedResponseServer(t, func(connection net.Conn) error {
-		if _, err := bufio.NewReader(connection).ReadString('\n'); err != nil {
-			return err
-		}
-		_, err := io.WriteString(connection, response)
-		return err
+	server, results := connectLoopbackProtocolServer(t, loopbackProtocolScript{
+		expectedRequest: lookupCase.query,
+		responseChunks:  []string{response},
 	})
-
-	server := WhoisServer{
-		Server:           "test.pwhois.example",
-		Port:             43,
-		Connection:       connection,
-		MaxResponseBytes: maximumResponseBytes,
+	if maximumResponseBytes > 0 {
+		server.MaxResponseBytes = maximumResponseBytes
 	}
-	err := lookup(server)
-	waitForScriptedServer(t, done)
-	return err
+	err := lookupCase.lookup(*server)
+	closeAndVerifyLoopbackProtocol(t, server, results, lookupCase.query)
+	return err, server.ServerAddressString()
 }
 
 func TestLookupErrorClassesAreConsistent(t *testing.T) {
@@ -122,34 +124,34 @@ func TestLookupErrorClassesAreConsistent(t *testing.T) {
 			if !errors.Is(err, ErrConnection) {
 				t.Fatalf("error = %v, want ErrConnection", err)
 			}
-			assertOperationError(t, err, lookupCase.operation)
+			assertOperationError(t, err, lookupCase.operation, "test.pwhois.example:43")
 		})
 
 		t.Run(lookupCase.name+"/rate limited", func(t *testing.T) {
-			err := lookupErrorFromResponse(t, lookupCase.lookup, "Error: query limit exceeded\n"+secret, 0)
+			err, endpoint := lookupErrorFromResponse(t, lookupCase, "Error: query limit exceeded\n"+secret, 0)
 			if !errors.Is(err, ErrRateLimited) {
 				t.Fatalf("error = %v, want ErrRateLimited", err)
 			}
 			if strings.Contains(err.Error(), secret) {
 				t.Fatal("rate-limit error exposed remote response content")
 			}
-			assertOperationError(t, err, lookupCase.operation)
+			assertOperationError(t, err, lookupCase.operation, endpoint)
 		})
 
 		t.Run(lookupCase.name+"/no records", func(t *testing.T) {
-			err := lookupErrorFromResponse(t, lookupCase.lookup, "", 0)
+			err, endpoint := lookupErrorFromResponse(t, lookupCase, "", 0)
 			if !errors.Is(err, ErrNoRecords) {
 				t.Fatalf("error = %v, want ErrNoRecords", err)
 			}
-			assertOperationError(t, err, lookupCase.operation)
+			assertOperationError(t, err, lookupCase.operation, endpoint)
 		})
 
 		t.Run(lookupCase.name+"/malformed response", func(t *testing.T) {
-			err := lookupErrorFromResponse(t, lookupCase.lookup, malformedResponses[lookupCase.name], 0)
+			err, endpoint := lookupErrorFromResponse(t, lookupCase, malformedResponses[lookupCase.name], 0)
 			if !errors.Is(err, ErrMalformedResponse) {
 				t.Fatalf("error = %v, want ErrMalformedResponse", err)
 			}
-			assertOperationError(t, err, lookupCase.operation)
+			assertOperationError(t, err, lookupCase.operation, endpoint)
 		})
 	}
 }
@@ -170,7 +172,7 @@ func TestLookupCancellationErrorPreservesClass(t *testing.T) {
 	if !errors.Is(err, ErrCanceled) || !errors.Is(err, context.Canceled) {
 		t.Fatalf("error = %v, want ErrCanceled and context.Canceled", err)
 	}
-	assertOperationError(t, err, "lookup IP")
+	assertOperationError(t, err, "lookup IP", "test.pwhois.example:43")
 }
 
 func TestConnectErrorPreservesTransportCause(t *testing.T) {
@@ -226,9 +228,9 @@ func TestNetblockServerErrorDoesNotExposeRemoteContent(t *testing.T) {
 
 func TestResponseTooLargeIncludesOperationContext(t *testing.T) {
 	lookupCase := lookupErrorCases()[0]
-	err := lookupErrorFromResponse(t, lookupCase.lookup, strings.Repeat("x", 65), 64)
+	err, endpoint := lookupErrorFromResponse(t, lookupCase, strings.Repeat("x", 65), 64)
 	if !errors.Is(err, ErrResponseTooLarge) {
 		t.Fatalf("error = %v, want ErrResponseTooLarge", err)
 	}
-	assertOperationError(t, err, lookupCase.operation)
+	assertOperationError(t, err, lookupCase.operation, endpoint)
 }

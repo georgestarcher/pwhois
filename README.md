@@ -154,6 +154,12 @@ go vet ./...
 go build ./...
 ```
 
+The required test suite includes an IPv4 loopback-only scripted PWHOIS server
+that verifies the complete connect, exact request, response, orderly EOF, and
+caller-owned connection cleanup lifecycle for every supported lookup type.
+Malformed, truncated, rate-limited, oversized, and non-responsive server paths
+also use deterministic local fixtures.
+
 Live integration tests use `whois.pwhois.org:43` and must be requested explicitly:
 
 ```shell

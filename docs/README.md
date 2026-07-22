@@ -26,5 +26,9 @@ Live checks use the public default PWHOIS server and are opt-in:
 go test -tags=integration ./...
 ```
 
+Required protocol coverage uses only a scripted IPv4 loopback server. It
+exercises real TCP connect, request, response, EOF, timeout, and caller cleanup
+behavior without depending on a public service.
+
 The repository does not yet have a canonical documentation-validation command;
 that work is tracked in issue #28.
