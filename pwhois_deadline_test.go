@@ -7,50 +7,6 @@ import (
 	"time"
 )
 
-func connectStalledServer(t *testing.T) net.Conn {
-	t.Helper()
-
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen: %v", err)
-	}
-
-	accepted := make(chan net.Conn, 1)
-	done := make(chan struct{})
-	go func() {
-		connection, err := listener.Accept()
-		if err == nil {
-			accepted <- connection
-			<-done
-			connection.Close()
-		}
-	}()
-
-	connection, err := net.Dial("tcp", listener.Addr().String())
-	if err != nil {
-		listener.Close()
-		close(done)
-		t.Fatalf("dial stalled server: %v", err)
-	}
-
-	select {
-	case <-accepted:
-	case <-time.After(time.Second):
-		connection.Close()
-		listener.Close()
-		close(done)
-		t.Fatal("stalled server did not accept connection")
-	}
-
-	t.Cleanup(func() {
-		connection.Close()
-		listener.Close()
-		close(done)
-	})
-
-	return connection
-}
-
 func assertTimeout(t *testing.T, err error) {
 	t.Helper()
 
@@ -68,41 +24,46 @@ func assertTimeout(t *testing.T, err error) {
 }
 
 func TestLookupDeadlineTimesOutStalledServers(t *testing.T) {
-	const timeout = 25 * time.Millisecond
+	const timeout = 100 * time.Millisecond
 
 	tests := []struct {
-		name   string
-		lookup func(WhoisServer) error
+		name    string
+		request string
+		lookup  func(WhoisServer) error
 	}{
 		{
-			name: "IP",
+			name:    "IP",
+			request: "app=\"GO pwhois Module\"\n192.0.2.1\n",
 			lookup: func(server WhoisServer) error {
 				responses := make(chan IpLookupResponse, 1)
-				server.LookupIP("8.8.8.8\n", responses)
+				server.LookupIP("app=\"GO pwhois Module\"\n192.0.2.1\n", responses)
 				return (<-responses).Error
 			},
 		},
 		{
-			name: "RouteView",
+			name:    "RouteView",
+			request: "app=\"GO pwhois Module\" routeview source-as=64500\n",
 			lookup: func(server WhoisServer) error {
 				responses := make(chan BGPLookupResponse, 1)
-				server.LookupRouteView("3356", "routeview source-as=3356\n", responses)
+				server.LookupRouteView("64500", "app=\"GO pwhois Module\" routeview source-as=64500\n", responses)
 				return (<-responses).Error
 			},
 		},
 		{
-			name: "Registry",
+			name:    "Registry",
+			request: "app=\"GO pwhois Module\" registry source-as=64500\n",
 			lookup: func(server WhoisServer) error {
 				responses := make(chan RegistryLookupResponse, 1)
-				server.LookupRegistry("3356", "registry source-as=3356\n", responses)
+				server.LookupRegistry("64500", "app=\"GO pwhois Module\" registry source-as=64500\n", responses)
 				return (<-responses).Error
 			},
 		},
 		{
-			name: "Netblock",
+			name:    "Netblock",
+			request: "app=\"GO pwhois Module\" netblock source-as=64500\n",
 			lookup: func(server WhoisServer) error {
 				responses := make(chan NetblockLookupResponse, 1)
-				server.LookupNetblock("3356", "netblock source-as=3356\n", responses)
+				server.LookupNetblock("64500", "app=\"GO pwhois Module\" netblock source-as=64500\n", responses)
 				return (<-responses).Error
 			},
 		},
@@ -110,8 +71,13 @@ func TestLookupDeadlineTimesOutStalledServers(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			server := WhoisServer{Connection: connectStalledServer(t), Timeout: timeout}
-			assertTimeout(t, test.lookup(server))
+			server, results := connectLoopbackProtocolServer(t, loopbackProtocolScript{
+				expectedRequest: test.request,
+				noResponse:      true,
+			})
+			server.Timeout = timeout
+			assertTimeout(t, test.lookup(*server))
+			closeAndVerifyLoopbackProtocol(t, server, results, test.request)
 		})
 	}
 }
