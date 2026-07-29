@@ -22,12 +22,12 @@ type loopbackProtocolResult struct {
 	err          error
 }
 
-// connectLoopbackProtocolServer starts a one-connection, IPv4 loopback-only
-// PWHOIS test server and connects through WhoisServer.Connect. The server
+// startLoopbackProtocolServer starts a one-connection, IPv4 loopback-only
+// PWHOIS test server. The server
 // reads the exact scripted request, optionally returns response chunks, sends
 // orderly EOF with CloseWrite, and then verifies that the caller closes its
 // side of the connection.
-func connectLoopbackProtocolServer(t *testing.T, script loopbackProtocolScript) (*WhoisServer, <-chan loopbackProtocolResult) {
+func startLoopbackProtocolServer(t *testing.T, script loopbackProtocolScript) (*WhoisServer, <-chan loopbackProtocolResult) {
 	t.Helper()
 
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
@@ -101,17 +101,24 @@ func connectLoopbackProtocolServer(t *testing.T, script loopbackProtocolScript) 
 		Timeout:          2 * time.Second,
 		MaxResponseBytes: DefaultMaxResponseBytes,
 	}
-	if err := server.Connect(); err != nil {
-		listener.Close()
-		t.Fatalf("connect to loopback server: %v", err)
-	}
-
 	t.Cleanup(func() {
 		if server.Connection != nil {
 			_ = server.Connection.Close()
 		}
 		_ = listener.Close()
 	})
+	return server, results
+}
+
+// connectLoopbackProtocolServer starts a scripted server and connects through
+// the deprecated low-level connection API.
+func connectLoopbackProtocolServer(t *testing.T, script loopbackProtocolScript) (*WhoisServer, <-chan loopbackProtocolResult) {
+	t.Helper()
+
+	server, results := startLoopbackProtocolServer(t, script)
+	if err := server.Connect(); err != nil {
+		t.Fatalf("connect to loopback server: %v", err)
+	}
 	return server, results
 }
 
@@ -131,6 +138,25 @@ func closeAndVerifyLoopbackProtocol(t *testing.T, server *WhoisServer, results <
 		}
 		if !result.clientClosed {
 			t.Error("loopback server did not observe client connection cleanup")
+		}
+	case <-time.After(4 * time.Second):
+		t.Fatal("loopback protocol server did not finish")
+	}
+}
+
+func verifyAutomaticallyClosedLoopbackProtocol(t *testing.T, results <-chan loopbackProtocolResult, expectedRequest string) {
+	t.Helper()
+
+	select {
+	case result := <-results:
+		if result.err != nil {
+			t.Fatalf("loopback protocol server: %v", result.err)
+		}
+		if result.request != expectedRequest {
+			t.Errorf("wire request = %q, want %q", result.request, expectedRequest)
+		}
+		if !result.clientClosed {
+			t.Error("loopback server did not observe automatic client connection cleanup")
 		}
 	case <-time.After(4 * time.Second):
 		t.Fatal("loopback protocol server did not finish")

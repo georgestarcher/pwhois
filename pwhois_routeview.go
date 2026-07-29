@@ -140,6 +140,8 @@ args:
 
 >c: a channel to return an BGPLookupResponse struct
 */
+// Deprecated: use LookupRouteViewContext, which formats the query and owns the
+// connection lifecycle.
 func (server WhoisServer) LookupRouteView(asn string, query string, c chan BGPLookupResponse) {
 
 	var Answer BGPRoutes

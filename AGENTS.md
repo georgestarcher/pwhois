@@ -27,12 +27,16 @@ released module to another application must start with
 
 ## Network behavior
 
-- A caller owns `WhoisServer.Connection`: call `Connect`, use one connection
-  for one lookup, check the returned response error, and close the connection.
+- Prefer the context-aware high-level lookup methods. Each call owns one
+  connection from dial through close. A configured `WhoisServer` is safe for
+  concurrent high-level calls only while its fields and custom `DialContext`
+  hook remain unchanged.
+- The deprecated low-level API remains a caller-owned lifecycle:
+  call `Connect`, use one connection for one lookup, check the returned response
+  error, and close `WhoisServer.Connection`.
 - `WhoisServer.Timeout` bounds connection establishment and the full lookup
-  write/read exchange. Its zero value uses the five-second default. The current
-  API has no context-aware high-level lookup; do not invent one. See #33 for
-  that future API work.
+  write/read exchange. Its zero value uses the five-second default. A shorter
+  context deadline takes precedence for high-level calls.
 - Respect server rate limits. Rate-limit responses and network errors are
   normal caller-visible outcomes, not conditions to hide with automatic retry.
 

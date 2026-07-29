@@ -214,6 +214,8 @@ args:
 
 >c: a channel to return an BGPLookupResponse struct
 */
+// Deprecated: use LookupNetblockContext, which formats the query and owns the
+// connection lifecycle.
 func (server WhoisServer) LookupNetblock(asn string, query string, c chan NetblockLookupResponse) {
 
 	var Answer NetblockRecord

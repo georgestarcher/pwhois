@@ -165,6 +165,8 @@ args:
 
 >c: a channel to return an IpLookupResponse struct
 */
+// Deprecated: use LookupIPContext, which formats the query and owns the
+// connection lifecycle.
 func (server WhoisServer) LookupIP(query string, c chan IpLookupResponse) {
 
 	var Answer []WhoIs

@@ -22,12 +22,24 @@ go get github.com/georgestarcher/pwhois
 
 ## Usage
 
-Each lookup uses a TCP connection to a PWHOIS server. Close the connection when the lookup is complete. By default, connection establishment and the complete lookup exchange time out after five seconds; set `WhoisServer.Timeout` to use a different `time.Duration`. Responses are limited to 8 MiB by default; set `WhoisServer.MaxResponseBytes` to a positive byte count when an application needs a different bound. Batch IP lookups accept up to 500 addresses; callers should also respect the selected server's rate limits.
+The context-aware lookup methods format the query, establish a dedicated TCP
+connection, complete the exchange, parse the response, and close the connection
+before returning. The zero-value `WhoisServer` uses the documented defaults.
+By default, connection establishment and the complete lookup operation time out
+after five seconds; set `WhoisServer.Timeout` to use a different
+`time.Duration`. A shorter caller deadline takes precedence, and cancellation
+interrupts an in-progress dial, write, or read.
+
+Responses are limited to 8 MiB by default; set
+`WhoisServer.MaxResponseBytes` to a positive byte count when an application
+needs a different bound. Batch IP lookups accept up to 500 addresses. Callers
+should also respect the selected server's rate limits.
 
 ```go
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -36,41 +48,35 @@ import (
 )
 
 func main() {
-	server := new(pwhois.WhoisServer)
-	server.SetDefaultValues()
-
-	if err := server.Connect(); err != nil {
-		log.Fatal(err)
-	}
-	defer server.Connection.Close()
-
-	query, err := server.FormatIpQuery([]string{"8.8.8.8"})
+	server := pwhois.WhoisServer{}
+	records, err := server.LookupIPContext(
+		context.Background(),
+		[]string{"192.0.2.1"},
+	)
 	if err != nil {
-		log.Fatal(err)
-	}
-
-	responses := make(chan pwhois.IpLookupResponse, 1)
-	server.LookupIP(query, responses)
-	response := <-responses
-
-	if response.Error != nil {
-		if errors.Is(response.Error, pwhois.ErrRateLimited) {
+		if errors.Is(err, pwhois.ErrRateLimited) {
 			// Apply the calling application's rate-limit policy.
 		}
 		var operationError *pwhois.OperationError
-		if errors.As(response.Error, &operationError) {
+		if errors.As(err, &operationError) {
 			log.Printf("%s against %s failed", operationError.Operation, operationError.Server)
 		}
-		log.Fatal(response.Error)
+		log.Fatal(err)
 	}
 
-	for _, record := range response.Response {
+	for _, record := range records {
 		fmt.Printf("%s: AS%s (%s)\n", record.IP, record.OriginAS, record.OrgName)
 	}
 }
 ```
 
-The other supported lookup types follow the same pattern. Use a separate connected `WhoisServer` for each lookup.
+The other supported lookup types follow the same pattern. A configured
+`WhoisServer` may be shared by concurrent high-level calls as long as its
+fields—and any custom `DialContext` function—are not mutated while calls are
+running. Every call uses an independent connection. The older `Connect`,
+`Connection`, query-formatter, channel-response API remains available for
+compatibility but is deprecated for new integrations; callers using it must
+continue to use one connected server per lookup and close the connection.
 
 All four lookup methods enforce the same response-size limit before parsing.
 An over-limit response closes its connection and returns a
@@ -112,12 +118,11 @@ context-aware lookup orchestration. `CacheCoordinator` supports bypass,
 read-through, forced refresh, fresh-only, and bounded stale-if-error policies.
 It also coalesces concurrent misses for one canonical key within a process.
 
-The coordinator does **not** change the connection ownership or automatically
-wrap the four existing lookup methods. A calling application supplies a
-context-aware fetch function, a `Cache` backend, and an explicit
-`SourceCachePolicy` for every provider/source. This lets a later high-level
-lookup API use the same contract without making the current channel-based API
-silently retry or cache network operations.
+The coordinator does **not** automatically wrap the four high-level lookup
+methods. A calling application supplies a context-aware fetch function, a
+`Cache` backend, and an explicit `SourceCachePolicy` for every provider/source.
+This keeps caching and retry policy in the application rather than silently
+changing lookup behavior.
 
 Cache keys include the source, endpoint, protocol, normalized query, options,
 parser version, and result schema version. Stored `CacheEnvelope` values
@@ -133,12 +138,12 @@ AI coding assistants integrating this module should use the
 [consumer-agent integration guide](docs/consumer-agent-guide.md). Repository
 maintainers should use the [maintainer guide](AGENTS.md).
 
-| Lookup | Query formatter | Lookup method | Response type |
+| Lookup | Preferred high-level method | Result type |
 | --- | --- | --- | --- |
-| IP | `FormatIpQuery` | `LookupIP` | `IpLookupResponse` |
-| RouteView | `FormatRouteViewQuery` | `LookupRouteView` | `BGPLookupResponse` |
-| Registry | `FormatRegistryQuery` | `LookupRegistry` | `RegistryLookupResponse` |
-| Netblock | `FormatNetblockQuery` | `LookupNetblock` | `NetblockLookupResponse` |
+| IP | `LookupIPContext` | `[]WhoIs` |
+| RouteView | `LookupRouteViewContext` | `BGPRoutes` |
+| Registry | `LookupRegistryContext` | `RegistryRecord` |
+| Netblock | `LookupNetblockContext` | `NetblockRecord` |
 
 ## PWHOIS servers
 
