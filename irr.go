@@ -420,7 +420,7 @@ func parseIRRDescriptions(values []string) ([]string, error) {
 	descriptions := make([]string, 0, len(values))
 	for _, value := range values {
 		value = strings.TrimSpace(value)
-		if value == "" || strings.ContainsRune(value, '\x00') {
+		if value == "" || !validIRRDescription(value) {
 			return nil, fmt.Errorf("invalid descr attribute")
 		}
 		descriptions = append(descriptions, value)
@@ -428,8 +428,20 @@ func parseIRRDescriptions(values []string) ([]string, error) {
 	return descriptions, nil
 }
 
+func validIRRDescription(value string) bool {
+	for _, character := range value {
+		if character == '\n' || character == '\t' {
+			continue
+		}
+		if character < 0x20 || character == 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
 func parseIRRIdentifierList(values []string, field string) ([]string, error) {
-	var identifiers []string
+	identifiers := make([]string, 0, len(values))
 	for _, value := range values {
 		for _, item := range strings.Split(value, ",") {
 			identifier, err := parseIRRIdentifier(item, field)
@@ -444,8 +456,13 @@ func parseIRRIdentifierList(values []string, field string) ([]string, error) {
 
 func parseIRRIdentifier(value, field string) (string, error) {
 	value = strings.TrimSpace(value)
-	if value == "" || strings.ContainsAny(value, " \t\r\n\x00") {
+	if value == "" {
 		return "", fmt.Errorf("invalid %s attribute", field)
+	}
+	for _, character := range value {
+		if character < 0x21 || character > 0x7e {
+			return "", fmt.Errorf("invalid %s attribute", field)
+		}
 	}
 	return value, nil
 }
