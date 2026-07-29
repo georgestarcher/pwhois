@@ -182,10 +182,29 @@ func TestParseTeamCymruResponseFailures(t *testing.T) {
 			wantError: ErrMalformedResponse,
 		},
 		{
-			name:      "conflicting duplicate",
+			name:      "duplicate with different Found state",
 			requested: []string{"192.0.2.1"},
 			response: teamCymruSingleResult +
 				"\nNA | 192.0.2.1 | NA | NA | NA | NA | NA",
+			wantError: ErrMalformedResponse,
+		},
+		{
+			name:      "duplicate with different origin data",
+			requested: []string{"192.0.2.1"},
+			response: teamCymruSingleResult +
+				"\n64501 | 192.0.2.1 | 192.0.2.0/24 | ZZ | test | 2020-01-02 | OTHER-AS",
+			wantError: ErrMalformedResponse,
+		},
+		{
+			name:      "prefix does not contain IP",
+			requested: []string{"192.0.2.1"},
+			response:  "64500 | 192.0.2.1 | 198.51.100.0/24 | ZZ | test | NA | Example",
+			wantError: ErrMalformedResponse,
+		},
+		{
+			name:      "prefix address family differs",
+			requested: []string{"192.0.2.1"},
+			response:  "64500 | 192.0.2.1 | 2001:db8::/32 | ZZ | test | NA | Example",
 			wantError: ErrMalformedResponse,
 		},
 	}
@@ -245,6 +264,23 @@ func TestTeamCymruProviderResponseErrors(t *testing.T) {
 			verifyAutomaticallyClosedLoopbackProtocol(t, protocolResult, teamCymruSingleRequest)
 		})
 	}
+}
+
+func TestTeamCymruRateLimitPhraseInsideASNameIsData(t *testing.T) {
+	response := "64500 | 192.0.2.1 | 192.0.2.0/24 | ZZ | test | 2020-01-02 | RATE LIMIT RESEARCH NETWORK"
+	provider, protocolResult := loopbackTeamCymruProvider(t, loopbackProtocolScript{
+		expectedRequest: teamCymruSingleRequest,
+		responseChunks:  []string{response},
+	})
+
+	results, err := provider.LookupIPContext(context.Background(), []string{"192.0.2.1"})
+	if err != nil {
+		t.Fatalf("LookupIPContext: %v", err)
+	}
+	if len(results) != 1 || results[0].ASName != "RATE LIMIT RESEARCH NETWORK" {
+		t.Fatalf("results = %+v", results)
+	}
+	verifyAutomaticallyClosedLoopbackProtocol(t, protocolResult, teamCymruSingleRequest)
 }
 
 func TestTeamCymruProviderCancellationAndTimeout(t *testing.T) {

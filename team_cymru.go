@@ -250,10 +250,19 @@ func (provider TeamCymruProvider) LookupIPContext(ctx context.Context, values []
 }
 
 func isTeamCymruRateLimitedResponse(response string) bool {
-	lower := strings.ToLower(response)
-	return strings.Contains(lower, "query limit exceeded") ||
-		strings.Contains(lower, "rate limit") ||
-		strings.Contains(lower, "too many queries")
+	for _, line := range strings.Split(response, "\n") {
+		trimmed := strings.ToLower(strings.TrimSpace(line))
+		if strings.Contains(trimmed, "|") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "error:") &&
+			(strings.Contains(trimmed, "query limit exceeded") ||
+				strings.Contains(trimmed, "rate limit") ||
+				strings.Contains(trimmed, "too many queries")) {
+			return true
+		}
+	}
+	return false
 }
 
 func isTeamCymruRejectedResponse(response string) bool {
@@ -274,7 +283,6 @@ func parseTeamCymruIPResponse(requested []string, response, endpoint string, fet
 
 	requestedSet := make(map[string]struct{}, len(requested))
 	seen := make(map[string]bool, len(requested))
-	seenFound := make(map[string]bool, len(requested))
 	for _, value := range requested {
 		requestedSet[value] = struct{}{}
 	}
@@ -297,11 +305,10 @@ func parseTeamCymruIPResponse(requested []string, response, endpoint string, fet
 		if _, expected := requestedSet[result.IP]; !expected {
 			return nil, malformedResponseError(fmt.Errorf("Team Cymru response line %d returned unrequested IP", lineNumber+1))
 		}
-		if previousFound, duplicate := seenFound[result.IP]; duplicate && previousFound != result.Found {
-			return nil, malformedResponseError(fmt.Errorf("Team Cymru response line %d conflicts with an earlier result", lineNumber+1))
+		if seen[result.IP] {
+			return nil, malformedResponseError(fmt.Errorf("Team Cymru response line %d duplicates an earlier result", lineNumber+1))
 		}
 		seen[result.IP] = true
-		seenFound[result.IP] = result.Found
 		if result.Found {
 			foundCount++
 		}
@@ -374,6 +381,9 @@ func parseTeamCymruIPLine(line, endpoint string, fetchedAt time.Time) (TeamCymru
 	_, prefix, err := net.ParseCIDR(prefixField)
 	if err != nil {
 		return TeamCymruIPResult{}, fmt.Errorf("invalid BGP prefix")
+	}
+	if !prefix.Contains(ip) {
+		return TeamCymruIPResult{}, fmt.Errorf("BGP prefix does not contain the queried IP")
 	}
 
 	result.Found = true
