@@ -337,6 +337,22 @@ func TestRDAPBoundedBootstrapAuthorizedReferral(t *testing.T) {
 	}
 }
 
+func TestRDAPInitialBaseDoesNotRequireReferralAllowlist(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		writeRDAPJSON(response, rdapIPResponse)
+	}))
+	defer server.Close()
+
+	resolver := &staticRDAPBootstrapResolver{}
+	resolver.ipResult = testRDAPResolution(t, server.URL)
+	resolver.ipResult.AllowedAuthorities = nil
+	provider := testRDAPProvider(server, resolver)
+
+	if _, err := provider.LookupIPContext(context.Background(), "192.0.2.42"); err != nil {
+		t.Fatalf("LookupIPContext without referral allowlist: %v", err)
+	}
+}
+
 func TestRDAPReferralFailurePreservesAuthoritativeEndpoint(t *testing.T) {
 	final := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.WriteHeader(http.StatusTooManyRequests)

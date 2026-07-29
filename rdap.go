@@ -385,7 +385,7 @@ func (provider RDAPProvider) fetch(ctx context.Context, resolution RDAPBootstrap
 	if err != nil {
 		return rdapHTTPResult{}, err
 	}
-	if err := provider.validateTarget(current, objectType, resource, allowed); err != nil {
+	if err := provider.validateTarget(current, objectType, resource); err != nil {
 		return rdapHTTPResult{finalURL: current}, err
 	}
 	client, err := provider.authoritativeClient()
@@ -452,8 +452,13 @@ func (provider RDAPProvider) fetch(ctx context.Context, resolution RDAPBootstrap
 			if err != nil {
 				return failure, malformedResponseError(fmt.Errorf("invalid RDAP referral URL"))
 			}
-			if err := provider.validateTarget(next, objectType, resource, allowed); err != nil {
+			if err := provider.validateTarget(next, objectType, resource); err != nil {
 				return failure, err
+			}
+			if !strings.EqualFold(current.Host, next.Host) {
+				if _, found := allowed[strings.ToLower(next.Host)]; !found {
+					return failure, malformedResponseError(fmt.Errorf("RDAP referral authority is not bootstrap-authorized"))
+				}
 			}
 			current = next
 		case http.StatusNotFound:
@@ -525,16 +530,13 @@ func buildRDAPQueryURL(baseURL, objectType, resource string) (*url.URL, error) {
 	return base, nil
 }
 
-func (provider RDAPProvider) validateTarget(target *url.URL, objectType, resource string, allowed map[string]struct{}) error {
+func (provider RDAPProvider) validateTarget(target *url.URL, objectType, resource string) error {
 	if target == nil || target.Host == "" || target.User != nil || target.RawQuery != "" || target.Fragment != "" {
 		return malformedResponseError(fmt.Errorf("unsafe RDAP referral URL"))
 	}
 	scheme := strings.ToLower(target.Scheme)
 	if scheme != "https" && !(provider.AllowInsecureHTTP && scheme == "http") {
 		return malformedResponseError(fmt.Errorf("RDAP target must use HTTPS"))
-	}
-	if _, found := allowed[strings.ToLower(target.Host)]; !found {
-		return malformedResponseError(fmt.Errorf("RDAP referral authority is not bootstrap-authorized"))
 	}
 	if !provider.AllowPrivateNetworkTargets && unsafeRDAPHostname(target.Hostname()) {
 		return malformedResponseError(fmt.Errorf("RDAP target is not a public network host"))

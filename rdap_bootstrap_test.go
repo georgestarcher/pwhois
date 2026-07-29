@@ -101,6 +101,36 @@ func TestIANARDAPBootstrapResolutionAndCaching(t *testing.T) {
 	}
 }
 
+func TestIANARDAPBootstrapHonorsExpiredResponse(t *testing.T) {
+	requestCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		requestCount++
+		response.Header().Set("Content-Type", "application/json")
+		response.Header().Set("Expires", time.Now().Add(-time.Hour).UTC().Format(http.TimeFormat))
+		_, _ = response.Write([]byte(`{
+  "version":"1.0",
+  "publication":"2026-07-29T12:00:00Z",
+  "services":[[["192.0.2.0/24"],["https://rdap.example.test/"]]]
+}`))
+	}))
+	defer server.Close()
+
+	resolver := &IANARDAPBootstrapResolver{
+		Client:            server.Client(),
+		IPv4URL:           server.URL,
+		AllowInsecureHTTP: true,
+		FallbackTTL:       time.Hour,
+	}
+	for lookup := 0; lookup < 2; lookup++ {
+		if _, err := resolver.ResolveIP(context.Background(), net.ParseIP("192.0.2.42")); err != nil {
+			t.Fatalf("ResolveIP %d: %v", lookup+1, err)
+		}
+	}
+	if requestCount != 2 {
+		t.Fatalf("expired bootstrap request count = %d, want 2", requestCount)
+	}
+}
+
 func TestIANARDAPBootstrapNoMatchAndValidation(t *testing.T) {
 	tests := []struct {
 		name      string

@@ -380,9 +380,10 @@ func (resolver *IANARDAPBootstrapResolver) fetch(ctx context.Context, bootstrapU
 		return rdapBootstrapDocument{}, time.Time{}, err
 	}
 
-	expiresAt := time.Now().Add(resolver.fallbackTTL())
+	now := time.Now()
+	expiresAt := now.Add(resolver.fallbackTTL())
 	if expires := response.Header.Get("Expires"); expires != "" {
-		if parsed, err := http.ParseTime(expires); err == nil && parsed.After(time.Now()) {
+		if parsed, err := http.ParseTime(expires); err == nil {
 			expiresAt = parsed
 		}
 	}
