@@ -134,9 +134,12 @@ func normalizeRISWhoisQuery(value string) (risWhoisQuery, error) {
 		canonical := ip.String()
 		return risWhoisQuery{
 			normalized: canonical,
-			wire:       "-M " + canonical + "\n",
-			match:      "longest",
-			ip:         ip,
+			// RISwhois gives -M an IP-specific meaning: return only the
+			// longest matches. For prefix inputs, -M instead means all more
+			// specifics; those use -x below.
+			wire:  "-M " + canonical + "\n",
+			match: "longest",
+			ip:    ip,
 		}, nil
 	}
 
