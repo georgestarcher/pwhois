@@ -443,6 +443,7 @@ func validIRRDescription(value string) bool {
 func parseIRRIdentifierList(values []string, field string) ([]string, error) {
 	identifiers := make([]string, 0, len(values))
 	for _, value := range values {
+		value, _, _ = strings.Cut(value, "#")
 		for _, item := range strings.Split(value, ",") {
 			identifier, err := parseIRRIdentifier(item, field)
 			if err != nil {
@@ -455,6 +456,7 @@ func parseIRRIdentifierList(values []string, field string) ([]string, error) {
 }
 
 func parseIRRIdentifier(value, field string) (string, error) {
+	value, _, _ = strings.Cut(value, "#")
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return "", fmt.Errorf("invalid %s attribute", field)

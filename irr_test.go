@@ -125,11 +125,11 @@ descr: first description
 descr: second description
  continuation
 mnt-by: FIRST-MNT, SECOND-MNT
-mnt-by: THIRD-MNT
-member-of: RS-FIRST
+mnt-by: THIRD-MNT # filtered maintainer annotation
+member-of: RS-FIRST # filtered set annotation
 member-of: RS-SECOND, RS-THIRD
 rpki-ov-state: VALID # synthetic provider annotation
-source: TEST-RADB
+source: TEST-RADB # Filtered
 
 route: 192.0.2.0/24
 origin: as64501
@@ -189,9 +189,11 @@ func TestParseIRRResponseFailures(t *testing.T) {
 		{name: "missing source", response: "route: 192.0.2.0/24\norigin: AS64500", wantError: ErrMalformedResponse},
 		{name: "duplicate source", response: valid + "\nsource: SECOND", wantError: ErrMalformedResponse},
 		{name: "invalid source", response: "route: 192.0.2.0/24\norigin: AS64500\nsource: TWO WORDS", wantError: ErrMalformedResponse},
+		{name: "comment-only source", response: "route: 192.0.2.0/24\norigin: AS64500\nsource: # Filtered", wantError: ErrMalformedResponse},
 		{name: "empty description", response: valid + "\ndescr:", wantError: ErrMalformedResponse},
 		{name: "control in description", response: valid + "\ndescr: unsafe\x1bvalue", wantError: ErrMalformedResponse},
 		{name: "empty maintainer", response: valid + "\nmnt-by: FIRST,", wantError: ErrMalformedResponse},
+		{name: "comment-only maintainer", response: valid + "\nmnt-by: # Filtered", wantError: ErrMalformedResponse},
 		{name: "invalid member-of", response: valid + "\nmember-of: TWO WORDS", wantError: ErrMalformedResponse},
 		{name: "control in maintainer", response: valid + "\nmnt-by: UNSAFE\x07MNT", wantError: ErrMalformedResponse},
 		{name: "duplicate RPKI state", response: valid + "\nrpki-ov-state: invalid", wantError: ErrMalformedResponse},
