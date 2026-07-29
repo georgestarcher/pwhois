@@ -8,15 +8,20 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
 const (
 	// DefaultRDAPMaxReferrals bounds manually followed HTTP redirects.
 	DefaultRDAPMaxReferrals = 3
+	// maxRDAPEntityDepth bounds recursive entity traversal in untrusted RDAP
+	// responses.
+	maxRDAPEntityDepth = 8
 
 	// RDAPSource identifies normalized RDAP registration results.
 	RDAPSource = "rdap"
@@ -170,6 +175,7 @@ type rawRDAPEntity struct {
 	Roles           []string        `json:"roles"`
 	Status          []string        `json:"status"`
 	VCardArray      json.RawMessage `json:"vcardArray"`
+	Entities        []rawRDAPEntity `json:"entities"`
 }
 
 type rawRDAPRedaction struct {
@@ -291,7 +297,11 @@ func (provider RDAPProvider) LookupIPContext(ctx context.Context, value string) 
 	}
 	httpResult, err := provider.fetch(lookupCtx, resolution, "ip", query)
 	if err != nil {
-		return RDAPIPResult{}, provider.operationError(operation, provider.Bootstrap.CacheIdentity(), err)
+		endpoint := rdapOrigin(httpResult.finalURL)
+		if endpoint == "" {
+			endpoint = provider.Bootstrap.CacheIdentity()
+		}
+		return RDAPIPResult{}, provider.operationError(operation, endpoint, err)
 	}
 	result, err := parseRDAPIPResult(query, httpResult, time.Now().UTC())
 	if err != nil {
@@ -326,7 +336,11 @@ func (provider RDAPProvider) LookupASNContext(ctx context.Context, value string)
 	}
 	httpResult, err := provider.fetch(lookupCtx, resolution, "autnum", query)
 	if err != nil {
-		return RDAPASNResult{}, provider.operationError(operation, provider.Bootstrap.CacheIdentity(), err)
+		endpoint := rdapOrigin(httpResult.finalURL)
+		if endpoint == "" {
+			endpoint = provider.Bootstrap.CacheIdentity()
+		}
+		return RDAPASNResult{}, provider.operationError(operation, endpoint, err)
 	}
 	result, err := parseRDAPASNResult(asn, httpResult, time.Now().UTC())
 	if err != nil {
@@ -372,42 +386,54 @@ func (provider RDAPProvider) fetch(ctx context.Context, resolution RDAPBootstrap
 		return rdapHTTPResult{}, err
 	}
 	if err := provider.validateTarget(current, objectType, resource, allowed); err != nil {
-		return rdapHTTPResult{}, err
+		return rdapHTTPResult{finalURL: current}, err
+	}
+	client, err := provider.authoritativeClient()
+	if err != nil {
+		return rdapHTTPResult{finalURL: current}, err
 	}
 
 	visited := make(map[string]struct{})
 	for referralCount := 0; ; referralCount++ {
+		failure := rdapHTTPResult{
+			finalURL:             current,
+			referralCount:        referralCount,
+			bootstrapPublication: resolution.Publication,
+		}
 		currentKey := current.String()
 		if _, found := visited[currentKey]; found {
-			return rdapHTTPResult{}, malformedResponseError(fmt.Errorf("RDAP referral loop"))
+			return failure, malformedResponseError(fmt.Errorf("RDAP referral loop"))
 		}
 		visited[currentKey] = struct{}{}
 
 		request, err := http.NewRequestWithContext(ctx, http.MethodGet, current.String(), nil)
 		if err != nil {
-			return rdapHTTPResult{}, invalidInputError("invalid RDAP request URL")
+			return failure, invalidInputError("invalid RDAP request URL")
 		}
 		request.Header.Set("Accept", "application/rdap+json")
 		request.Header.Set("User-Agent", AppName)
 
-		response, err := rdapNoRedirectClient(provider.Client).Do(request)
+		response, err := client.Do(request)
 		if err != nil {
-			return rdapHTTPResult{}, classifyContextTransportError(ctx, err)
+			if errors.Is(err, ErrMalformedResponse) {
+				return failure, err
+			}
+			return failure, classifyContextTransportError(ctx, err)
 		}
 
 		switch response.StatusCode {
 		case http.StatusOK:
 			if !isRDAPJSONContentType(response.Header.Get("Content-Type"), "application/rdap+json") {
 				response.Body.Close()
-				return rdapHTTPResult{}, malformedResponseError(fmt.Errorf("unexpected RDAP content type"))
+				return failure, malformedResponseError(fmt.Errorf("unexpected RDAP content type"))
 			}
 			body, readErr := readBoundedHTTPBody(response.Body, provider.MaxResponseBytes)
 			response.Body.Close()
 			if readErr != nil {
 				if errors.Is(readErr, ErrResponseTooLarge) {
-					return rdapHTTPResult{}, readErr
+					return failure, readErr
 				}
-				return rdapHTTPResult{}, classifyContextTransportError(ctx, readErr)
+				return failure, classifyContextTransportError(ctx, readErr)
 			}
 			return rdapHTTPResult{
 				body:                 body,
@@ -420,30 +446,72 @@ func (provider RDAPProvider) fetch(ctx context.Context, resolution RDAPBootstrap
 			location := response.Header.Get("Location")
 			response.Body.Close()
 			if referralCount >= provider.MaxReferrals {
-				return rdapHTTPResult{}, malformedResponseError(fmt.Errorf("RDAP referral limit exceeded"))
+				return failure, malformedResponseError(fmt.Errorf("RDAP referral limit exceeded"))
 			}
 			next, err := current.Parse(location)
 			if err != nil {
-				return rdapHTTPResult{}, malformedResponseError(fmt.Errorf("invalid RDAP referral URL"))
+				return failure, malformedResponseError(fmt.Errorf("invalid RDAP referral URL"))
 			}
 			if err := provider.validateTarget(next, objectType, resource, allowed); err != nil {
-				return rdapHTTPResult{}, err
+				return failure, err
 			}
 			current = next
 		case http.StatusNotFound:
 			response.Body.Close()
-			return rdapHTTPResult{}, noRecordsError("RDAP registration lookup")
+			return failure, noRecordsError("RDAP registration lookup")
 		case http.StatusTooManyRequests:
 			response.Body.Close()
-			return rdapHTTPResult{}, ErrRateLimited
+			return failure, ErrRateLimited
 		default:
 			status := response.StatusCode
 			response.Body.Close()
 			if status >= 500 {
-				return rdapHTTPResult{}, fmt.Errorf("%w: RDAP HTTP status %d", ErrConnection, status)
+				return failure, fmt.Errorf("%w: RDAP HTTP status %d", ErrConnection, status)
 			}
-			return rdapHTTPResult{}, fmt.Errorf("%w: RDAP HTTP status %d", ErrProviderRejected, status)
+			return failure, fmt.Errorf("%w: RDAP HTTP status %d", ErrProviderRejected, status)
 		}
+	}
+}
+
+func (provider RDAPProvider) authoritativeClient() (*http.Client, error) {
+	client := rdapNoRedirectClient(provider.Client)
+	if provider.AllowPrivateNetworkTargets {
+		return client, nil
+	}
+
+	transport := client.Transport
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+	httpTransport, ok := transport.(*http.Transport)
+	if !ok {
+		return nil, invalidInputError("public-only RDAP requires an HTTP transport with dial-time address validation")
+	}
+	clonedTransport := httpTransport.Clone()
+	// A proxy may resolve the target remotely, outside this process's
+	// dial-time address policy. Public-only mode therefore connects directly.
+	clonedTransport.Proxy = nil
+	clonedTransport.DialContext = publicRDAPDialer().DialContext
+	clonedTransport.DialTLSContext = nil
+	clonedTransport.DialTLS = nil
+	client.Transport = clonedTransport
+	return client, nil
+}
+
+func publicRDAPDialer() *net.Dialer {
+	return &net.Dialer{
+		KeepAlive: time.Second * time.Duration(SocketKeepAlive),
+		ControlContext: func(_ context.Context, _, address string, _ syscall.RawConn) error {
+			host, _, err := net.SplitHostPort(address)
+			if err != nil {
+				return malformedResponseError(fmt.Errorf("invalid resolved RDAP target"))
+			}
+			ip := net.ParseIP(strings.Trim(host, "[]"))
+			if ip == nil || unsafeRDAPIPAddress(ip) {
+				return malformedResponseError(fmt.Errorf("RDAP target resolved to a non-public or special-use address"))
+			}
+			return nil
+		},
 	}
 }
 
@@ -486,8 +554,59 @@ func unsafeRDAPHostname(hostname string) bool {
 		return true
 	}
 	ip := net.ParseIP(hostname)
-	return ip != nil && (ip.IsPrivate() || ip.IsLoopback() || ip.IsUnspecified() ||
-		ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast())
+	return ip != nil && unsafeRDAPIPAddress(ip)
+}
+
+var rdapSpecialUsePrefixes = []netip.Prefix{
+	netip.MustParsePrefix("0.0.0.0/8"),
+	netip.MustParsePrefix("10.0.0.0/8"),
+	netip.MustParsePrefix("100.64.0.0/10"),
+	netip.MustParsePrefix("127.0.0.0/8"),
+	netip.MustParsePrefix("169.254.0.0/16"),
+	netip.MustParsePrefix("172.16.0.0/12"),
+	netip.MustParsePrefix("192.0.0.0/24"),
+	netip.MustParsePrefix("192.0.2.0/24"),
+	netip.MustParsePrefix("192.31.196.0/24"),
+	netip.MustParsePrefix("192.52.193.0/24"),
+	netip.MustParsePrefix("192.88.99.0/24"),
+	netip.MustParsePrefix("192.168.0.0/16"),
+	netip.MustParsePrefix("192.175.48.0/24"),
+	netip.MustParsePrefix("198.18.0.0/15"),
+	netip.MustParsePrefix("198.51.100.0/24"),
+	netip.MustParsePrefix("203.0.113.0/24"),
+	netip.MustParsePrefix("240.0.0.0/4"),
+	netip.MustParsePrefix("::/128"),
+	netip.MustParsePrefix("::1/128"),
+	netip.MustParsePrefix("::ffff:0:0/96"),
+	netip.MustParsePrefix("64:ff9b::/96"),
+	netip.MustParsePrefix("64:ff9b:1::/48"),
+	netip.MustParsePrefix("100::/64"),
+	netip.MustParsePrefix("100:0:0:1::/64"),
+	netip.MustParsePrefix("2001::/23"),
+	netip.MustParsePrefix("2001:db8::/32"),
+	netip.MustParsePrefix("2002::/16"),
+	netip.MustParsePrefix("2620:4f:8000::/48"),
+	netip.MustParsePrefix("3fff::/20"),
+	netip.MustParsePrefix("5f00::/16"),
+	netip.MustParsePrefix("fc00::/7"),
+	netip.MustParsePrefix("fe80::/10"),
+}
+
+func unsafeRDAPIPAddress(ip net.IP) bool {
+	address, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		return true
+	}
+	address = address.Unmap()
+	if !address.IsGlobalUnicast() {
+		return true
+	}
+	for _, prefix := range rdapSpecialUsePrefixes {
+		if prefix.Contains(address) {
+			return true
+		}
+	}
+	return false
 }
 
 func parseRDAPIPResult(query string, response rdapHTTPResult, fetchedAt time.Time) (RDAPIPResult, error) {
@@ -636,6 +755,16 @@ func normalizeRDAPEvents(values []rawRDAPEvent) ([]RDAPEvent, error) {
 }
 
 func normalizeRDAPEntities(values []rawRDAPEntity) ([]string, []RDAPEntityReference, bool, error) {
+	return normalizeRDAPEntitiesAtDepth(values, 0)
+}
+
+func normalizeRDAPEntitiesAtDepth(values []rawRDAPEntity, depth int) ([]string, []RDAPEntityReference, bool, error) {
+	if len(values) == 0 {
+		return nil, nil, false, nil
+	}
+	if depth > maxRDAPEntityDepth {
+		return nil, nil, false, malformedResponseError(fmt.Errorf("RDAP entity nesting exceeds the supported depth"))
+	}
 	var organizations []string
 	var abuseContacts []RDAPEntityReference
 	redacted := false
@@ -665,8 +794,30 @@ func normalizeRDAPEntities(values []rawRDAPEntity) ([]string, []RDAPEntityRefere
 			}
 			organizations = append(organizations, entityOrganizations...)
 		}
+		nestedOrganizations, nestedAbuseContacts, nestedRedacted, err :=
+			normalizeRDAPEntitiesAtDepth(entity.Entities, depth+1)
+		if err != nil {
+			return nil, nil, false, err
+		}
+		organizations = append(organizations, nestedOrganizations...)
+		abuseContacts = append(abuseContacts, nestedAbuseContacts...)
+		redacted = redacted || nestedRedacted
 	}
-	return deduplicateStrings(organizations), abuseContacts, redacted, nil
+	return deduplicateStrings(organizations), deduplicateRDAPEntityReferences(abuseContacts), redacted, nil
+}
+
+func deduplicateRDAPEntityReferences(values []RDAPEntityReference) []RDAPEntityReference {
+	seen := make(map[string]struct{}, len(values))
+	result := make([]RDAPEntityReference, 0, len(values))
+	for _, value := range values {
+		key := value.Handle + "\x00" + strings.Join(value.Roles, "\x00")
+		if _, found := seen[key]; found {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, value)
+	}
+	return result
 }
 
 func extractRDAPOrganizations(raw json.RawMessage) ([]string, error) {

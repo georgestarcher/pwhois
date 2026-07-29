@@ -251,6 +251,64 @@ func TestRDAPDirectASNLookup(t *testing.T) {
 	}
 }
 
+func TestRDAPNestedEntitiesAndDepthBound(t *testing.T) {
+	nestedEntity := `{
+	  "objectClassName": "entity",
+	  "handle": "PARENT-EXAMPLE",
+	  "entities": [
+	    {
+	      "objectClassName": "entity",
+	      "handle": "ORG-NESTED",
+	      "roles": ["registrant"],
+	      "vcardArray": ["vcard", [
+	        ["version", {}, "text", "4.0"],
+	        ["org", {}, "text", "Nested Example Organization"]
+	      ]]
+	    },
+	    {
+	      "objectClassName": "entity",
+	      "handle": "ABUSE-NESTED",
+	      "roles": ["abuse"],
+	      "status": ["redacted"]
+	    }
+	  ]
+	}`
+	body := strings.Replace(rdapIPResponse, `"entities": [`, `"entities": [`+nestedEntity+`,`, 1)
+	responseURL, _ := url.Parse("https://rdap.example.test/rdap/ip/192.0.2.42")
+	result, err := parseRDAPIPResult("192.0.2.42", rdapHTTPResult{
+		body:     []byte(body),
+		finalURL: responseURL,
+	}, time.Now())
+	if err != nil {
+		t.Fatalf("parse nested entities: %v", err)
+	}
+	if !containsFold(result.RegisteredOrganizations, "Nested Example Organization") {
+		t.Fatalf("nested registered organizations = %v", result.RegisteredOrganizations)
+	}
+	foundNestedAbuse := false
+	for _, contact := range result.AbuseContacts {
+		if contact.Handle == "ABUSE-NESTED" {
+			foundNestedAbuse = true
+		}
+	}
+	if !foundNestedAbuse || !result.Redacted {
+		t.Fatalf("nested abuse/redaction = %+v", result)
+	}
+
+	deepest := `{"objectClassName":"entity"}`
+	for depth := 0; depth <= maxRDAPEntityDepth; depth++ {
+		deepest = `{"objectClassName":"entity","entities":[` + deepest + `]}`
+	}
+	tooDeepBody := strings.Replace(rdapIPResponse, `"entities": [`, `"entities": [`+deepest+`,`, 1)
+	_, err = parseRDAPIPResult("192.0.2.42", rdapHTTPResult{
+		body:     []byte(tooDeepBody),
+		finalURL: responseURL,
+	}, time.Now())
+	if !errors.Is(err, ErrMalformedResponse) {
+		t.Fatalf("deep entity error = %v, want ErrMalformedResponse", err)
+	}
+}
+
 func TestRDAPBoundedBootstrapAuthorizedReferral(t *testing.T) {
 	final := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		writeRDAPJSON(response, rdapIPResponse)
@@ -276,6 +334,35 @@ func TestRDAPBoundedBootstrapAuthorizedReferral(t *testing.T) {
 	}
 	if result.ReferralCount != 1 || result.Endpoint != final.URL {
 		t.Fatalf("referral provenance = %+v", result)
+	}
+}
+
+func TestRDAPReferralFailurePreservesAuthoritativeEndpoint(t *testing.T) {
+	final := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer final.Close()
+	finalURL, _ := url.Parse(final.URL)
+
+	initial := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		http.Redirect(response, request, final.URL+"/rdap/ip/192.0.2.42", http.StatusTemporaryRedirect)
+	}))
+	defer initial.Close()
+	initialURL, _ := url.Parse(initial.URL)
+
+	resolver := &staticRDAPBootstrapResolver{}
+	resolver.ipResult = testRDAPResolution(t, initial.URL)
+	resolver.ipResult.AllowedAuthorities = []string{initialURL.Host, finalURL.Host}
+	provider := testRDAPProvider(initial, resolver)
+	provider.Client = &http.Client{}
+
+	_, err := provider.LookupIPContext(context.Background(), "192.0.2.42")
+	if !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("lookup error = %v, want ErrRateLimited", err)
+	}
+	var operationError *OperationError
+	if !errors.As(err, &operationError) || operationError.Server != final.URL {
+		t.Fatalf("operation endpoint = %+v, want %q", operationError, final.URL)
 	}
 }
 
@@ -392,6 +479,10 @@ func TestRDAPHTTPFailures(t *testing.T) {
 			if !errors.Is(err, test.wantError) {
 				t.Fatalf("lookup error = %v, want %v", err, test.wantError)
 			}
+			var operationError *OperationError
+			if !errors.As(err, &operationError) || operationError.Server != server.URL {
+				t.Fatalf("operation endpoint = %+v, want %q", operationError, server.URL)
+			}
 		})
 	}
 }
@@ -502,6 +593,32 @@ func TestRDAPRejectsPrivateTargetsByDefault(t *testing.T) {
 	_, err := provider.LookupIPContext(context.Background(), "192.0.2.42")
 	if !errors.Is(err, ErrMalformedResponse) {
 		t.Fatalf("private target error = %v, want ErrMalformedResponse", err)
+	}
+}
+
+func TestRDAPRejectsSpecialUseTargetsAndResolvedAddresses(t *testing.T) {
+	for _, address := range []string{
+		"100.64.0.1",
+		"192.0.0.9",
+		"198.18.0.1",
+		"2001:db8::1",
+		"3fff::1",
+	} {
+		if !unsafeRDAPHostname(address) {
+			t.Errorf("unsafeRDAPHostname(%q) = false", address)
+		}
+	}
+
+	connection, err := publicRDAPDialer().DialContext(
+		context.Background(),
+		"tcp",
+		net.JoinHostPort("localhost", "443"),
+	)
+	if connection != nil {
+		connection.Close()
+	}
+	if !errors.Is(err, ErrMalformedResponse) {
+		t.Fatalf("resolved loopback error = %v, want ErrMalformedResponse", err)
 	}
 }
 
