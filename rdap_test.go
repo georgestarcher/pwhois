@@ -309,6 +309,27 @@ func TestRDAPNestedEntitiesAndDepthBound(t *testing.T) {
 	}
 }
 
+func TestRDAPEntityDeduplicationPreservesDelimiterValues(t *testing.T) {
+	_, contacts, _, err := normalizeRDAPEntities([]rawRDAPEntity{
+		{
+			ObjectClassName: "entity",
+			Handle:          "a",
+			Roles:           []string{"x", "abuse"},
+		},
+		{
+			ObjectClassName: "entity",
+			Handle:          "a\x00x",
+			Roles:           []string{"abuse"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("normalize entities: %v", err)
+	}
+	if len(contacts) != 2 {
+		t.Fatalf("abuse contacts = %+v, want both delimiter-containing references", contacts)
+	}
+}
+
 func TestRDAPBoundedBootstrapAuthorizedReferral(t *testing.T) {
 	final := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		writeRDAPJSON(response, rdapIPResponse)

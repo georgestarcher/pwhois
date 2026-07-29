@@ -809,17 +809,33 @@ func normalizeRDAPEntitiesAtDepth(values []rawRDAPEntity, depth int) ([]string, 
 }
 
 func deduplicateRDAPEntityReferences(values []RDAPEntityReference) []RDAPEntityReference {
-	seen := make(map[string]struct{}, len(values))
 	result := make([]RDAPEntityReference, 0, len(values))
 	for _, value := range values {
-		key := value.Handle + "\x00" + strings.Join(value.Roles, "\x00")
-		if _, found := seen[key]; found {
+		duplicate := false
+		for _, existing := range result {
+			if existing.Handle == value.Handle && equalStrings(existing.Roles, value.Roles) {
+				duplicate = true
+				break
+			}
+		}
+		if duplicate {
 			continue
 		}
-		seen[key] = struct{}{}
 		result = append(result, value)
 	}
 	return result
+}
+
+func equalStrings(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func extractRDAPOrganizations(raw json.RawMessage) ([]string, error) {
