@@ -211,6 +211,13 @@ func parseResponseFloat64(field, value string) (float64, error) {
 	return parsed, nil
 }
 
+// ContextDialer establishes a network connection for a high-level lookup.
+// The default is a net.Dialer. Tests and applications with custom transports
+// may supply a replacement that honors context cancellation.
+type ContextDialer interface {
+	DialContext(ctx context.Context, network, address string) (net.Conn, error)
+}
+
 // Whois server object
 type WhoisServer struct {
 	Server       string `default:"whois.pwhois.org"`
@@ -222,7 +229,14 @@ type WhoisServer struct {
 	// MaxResponseBytes bounds response data read before parsing. A value less
 	// than or equal to zero uses DefaultMaxResponseBytes.
 	MaxResponseBytes int64
-	Connection       net.Conn
+	// Dialer optionally replaces the default TCP dialer used by the
+	// context-aware high-level lookup methods. A replacement must be safe for
+	// concurrent use when the WhoisServer is shared by concurrent callers.
+	Dialer ContextDialer
+	// Connection is used only by the deprecated low-level Connect and channel
+	// lookup API. High-level context-aware lookups ignore this field and own a
+	// separate connection per call.
+	Connection net.Conn
 }
 
 // Return full DNS server socket Aadress
@@ -275,14 +289,6 @@ func (server WhoisServer) timeout() time.Duration {
 	return time.Second * time.Duration(SocketTimeout)
 }
 
-// setLookupDeadline bounds both the request write and response read. PWHOIS
-// lookups use a connection per request, so the deadline covers the complete
-// exchange rather than allowing a server that stops responding to block
-// indefinitely.
-func (server WhoisServer) setLookupDeadline() error {
-	return server.Connection.SetDeadline(time.Now().Add(server.timeout()))
-}
-
 func (server WhoisServer) operationError(operation string, err error) error {
 	endpoint := ""
 	if server.Server != "" && server.Port != 0 {
@@ -307,6 +313,18 @@ func classifyTransportError(err error) error {
 	return fmt.Errorf("%w: %w", ErrConnection, err)
 }
 
+func classifyContextTransportError(ctx context.Context, err error) error {
+	if ctx != nil {
+		if contextError := ctx.Err(); contextError != nil {
+			return classifyTransportError(contextError)
+		}
+		if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) {
+			return classifyTransportError(context.DeadlineExceeded)
+		}
+	}
+	return classifyTransportError(err)
+}
+
 func isRateLimitedResponse(response string) bool {
 	return strings.Contains(strings.ToLower(response), "query limit exceeded")
 }
@@ -314,14 +332,18 @@ func isRateLimitedResponse(response string) bool {
 // executeQuery applies one consistent connection, deadline, transport, and
 // rate-limit error contract to every native PWHOIS lookup.
 func (server WhoisServer) executeQuery(operation, query string) (string, error) {
+	return server.executeQueryContext(nil, operation, query, time.Now().Add(server.timeout()))
+}
+
+func (server WhoisServer) executeQueryContext(ctx context.Context, operation, query string, deadline time.Time) (string, error) {
 	if server.Connection == nil {
 		return "", server.operationError(operation, ErrConnection)
 	}
-	if err := server.setLookupDeadline(); err != nil {
-		return "", server.operationError(operation, classifyTransportError(err))
+	if err := server.Connection.SetDeadline(deadline); err != nil {
+		return "", server.operationError(operation, classifyContextTransportError(ctx, err))
 	}
 	if _, err := server.Connection.Write([]byte(query)); err != nil {
-		return "", server.operationError(operation, classifyTransportError(err))
+		return "", server.operationError(operation, classifyContextTransportError(ctx, err))
 	}
 
 	response, err := server.readLookupResponse()
@@ -329,7 +351,10 @@ func (server WhoisServer) executeQuery(operation, query string) (string, error) 
 		if errors.Is(err, ErrResponseTooLarge) {
 			return "", server.operationError(operation, err)
 		}
-		return "", server.operationError(operation, classifyTransportError(err))
+		return "", server.operationError(operation, classifyContextTransportError(ctx, err))
+	}
+	if ctx != nil && ctx.Err() != nil {
+		return "", server.operationError(operation, classifyTransportError(ctx.Err()))
 	}
 	if isRateLimitedResponse(response) {
 		return "", server.operationError(operation, ErrRateLimited)
@@ -407,6 +432,10 @@ func readBoundedResponse(reader io.Reader, limit int64) ([]byte, error) {
 }
 
 // Establish connection to the pwhois server
+//
+// Deprecated: use LookupIPContext, LookupRouteViewContext,
+// LookupRegistryContext, or LookupNetblockContext. Those methods own and close
+// a connection for each call.
 func (server *WhoisServer) Connect() error {
 
 	whoisDialer := &net.Dialer{

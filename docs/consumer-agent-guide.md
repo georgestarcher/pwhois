@@ -28,50 +28,42 @@ the PWHOIS query and response format.
 
 ## Choose a lookup
 
-| Need | Build a query with | Execute with | Response type |
+| Need | Preferred method | Result type |
 | --- | --- | --- | --- |
-| IP or IP batch information | `FormatIpQuery` | `LookupIP` | `IpLookupResponse` |
-| Routing paths for an ASN | `FormatRouteViewQuery` | `LookupRouteView` | `BGPLookupResponse` |
-| Registry data for an ASN | `FormatRegistryQuery` | `LookupRegistry` | `RegistryLookupResponse` |
-| Announced netblocks for an ASN | `FormatNetblockQuery` | `LookupNetblock` | `NetblockLookupResponse` |
+| IP or IP batch information | `LookupIPContext` | `[]WhoIs` |
+| Routing paths for an ASN | `LookupRouteViewContext` | `BGPRoutes` |
+| Registry data for an ASN | `LookupRegistryContext` | `RegistryRecord` |
+| Announced netblocks for an ASN | `LookupNetblockContext` | `NetblockRecord` |
 
-Use the query formatter instead of constructing wire text manually. ASN
-formatters accept decimal input with an optional `AS` prefix. The default IP
+Pass domain inputs to the high-level method instead of constructing wire text.
+ASN lookups accept decimal input with an optional `AS` prefix. The default IP
 batch limit is 500 addresses. Responses are limited to 8 MiB by default.
 
 ## Connection and error handling
 
-The application owns the TCP connection. Create a `WhoisServer`, set defaults,
-connect, use one connection for one lookup, and close the connection when the
-lookup is complete. Every lookup returns its result through a channel, so use a
-buffered channel and always check `response.Error`.
+Each high-level call owns its TCP connection from dial through close and returns
+its result synchronously. The zero-value `WhoisServer` applies the documented
+defaults.
 
 ```go
-server := new(pwhois.WhoisServer)
-server.SetDefaultValues()
-if err := server.Connect(); err != nil {
-	return err
-}
-defer server.Connection.Close()
-
-query, err := server.FormatIpQuery([]string{"192.0.2.1"})
+server := pwhois.WhoisServer{}
+records, err := server.LookupIPContext(ctx, []string{"192.0.2.1"})
 if err != nil {
 	return err
-}
-
-responses := make(chan pwhois.IpLookupResponse, 1)
-server.LookupIP(query, responses)
-response := <-responses
-if response.Error != nil {
-	return response.Error
 }
 ```
 
 `WhoisServer.Timeout` bounds connection establishment and the full request and
 response exchange; its zero value uses the five-second default. Set it to an
-application-appropriate `time.Duration` before calling `Connect` when a
-different bound is required. The current module has no context-aware high-level
-lookup API; that is tracked in issue #33.
+application-appropriate `time.Duration` before starting a lookup when a
+different bound is required. A shorter context deadline takes precedence.
+Cancellation interrupts an in-progress dial, write, or read.
+
+A configured `WhoisServer` is safe for concurrent high-level calls when the
+application does not mutate its fields during use. Each call has an independent
+connection. A custom `ContextDialer` must itself be concurrency-safe and must
+honor its context. This hook is intended for deterministic tests and
+controlled transport integration.
 
 `WhoisServer.MaxResponseBytes` bounds response data before parsing. Its zero
 value uses `DefaultMaxResponseBytes` (8 MiB), which provides more than 16 KiB
@@ -90,18 +82,21 @@ Do not compare error strings or expose full server response content in calling
 application logs.
 
 Handle connection, write, read, rate-limit, and parser errors as normal
-application outcomes. Do not silently retry rate-limit errors, share one
-connection among unrelated lookups, or treat a partial result as successful.
+application outcomes. Do not silently retry rate-limit errors or treat a
+partial result as successful.
+
+The exported query formatters, `Connect`, `Connection`, channel lookup methods,
+and channel response wrappers remain for compatibility with existing
+integrations. They are deprecated for new code. If maintaining a legacy
+integration, use one connected `WhoisServer` for one lookup and close its
+`Connection`.
 
 ## Optional cache orchestration
 
-`CacheCoordinator` is a building block for an application's future
-context-aware lookup layer. It does not automatically wrap `LookupIP`,
-`LookupRouteView`, `LookupRegistry`, or `LookupNetblock`, and it does not change
-their caller-owned connection lifecycle. Do not introduce a goroutine around a
-legacy lookup merely to make it fit the coordinator; use the high-level API
-tracked in issue #33 when it becomes available, or supply an application-owned
-context-aware fetch operation.
+`CacheCoordinator` does not automatically wrap `LookupIPContext`,
+`LookupRouteViewContext`, `LookupRegistryContext`, or
+`LookupNetblockContext`. Supply a high-level lookup as the application's
+context-aware fetch operation and retain explicit source policy.
 
 If the application uses this cache contract, read the
 [cache contract guide](cache-contract.md). In particular, configure a policy
@@ -124,7 +119,7 @@ synthetic/reserved documentation values such as `192.0.2.1` in examples.
 1. Confirm that native PWHOIS is the required protocol and select one lookup.
 2. Inspect the chosen module version and its formatter and response type.
 3. Set application-appropriate timeout, response-size, and rate-limit policy.
-4. Close the connection, classify every returned error with `errors.Is`, and
-   test malformed or unavailable-server behavior in the application.
+4. Classify every returned error with `errors.Is`, and test cancellation,
+   malformed responses, and unavailable-server behavior in the application.
 5. Keep orchestration, retries, logging, credentials, storage, and any action
    taken from results in application code.

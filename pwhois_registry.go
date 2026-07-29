@@ -174,6 +174,8 @@ args:
 
 >c: a channel to return an BGPLookupResponse struct
 */
+// Deprecated: use LookupRegistryContext, which formats the query and owns the
+// connection lifecycle.
 func (server WhoisServer) LookupRegistry(asn string, query string, c chan RegistryLookupResponse) {
 
 	var Answer RegistryRecord
