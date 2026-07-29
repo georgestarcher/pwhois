@@ -1,17 +1,19 @@
 # Repository maintainer guide for pwhois
 
-This repository is a Go client and parser for native PWHOIS queries. This file
-is the maintainer contract for automated coding assistants changing this
-repository. It is not consumer integration guidance; assistants adding the
-released module to another application must start with
+This repository is a Go client and parser for native PWHOIS queries plus
+explicit source-specific enrichment providers. This file is the maintainer
+contract for automated coding assistants changing this repository. It is not
+consumer integration guidance; assistants adding the released module to
+another application must start with
 [`docs/consumer-agent-guide.md`](docs/consumer-agent-guide.md).
 
 ## Scope and contracts
 
-- `pwhois` supports PWHOIS IP, RouteView, registry, and netblock queries.
-  It is not a generic WHOIS, IRR, or RDAP client. Changing only
-  `WhoisServer.Server` does not establish compatibility with another server or
-  response format; add format-specific implementation and tests first.
+- `pwhois` supports native PWHOIS IP, RouteView, registry, and netblock queries
+  plus the explicit `TeamCymruProvider` IP-to-ASN protocol. It is not a generic
+  WHOIS, IRR, or RDAP client. Changing only `WhoisServer.Server` or a provider
+  hostname does not establish compatibility with another response format; add
+  a source-specific implementation and tests first.
 - The exported Go API, JSON field names, README, and deterministic tests are
   consumer-facing contracts. Keep them aligned when behavior changes. Preserve
   the serialization conventions corrected in #22 and #25 deliberately; use
@@ -19,7 +21,7 @@ released module to another application must start with
   issue #36 for compatibility work.
 - Treat every server response as untrusted. Handle malformed, truncated,
   delimiter-containing, and oversized values without panics or data loss.
-  All lookups enforce `WhoisServer.MaxResponseBytes`; preserve the shared
+  All lookups enforce their configured `MaxResponseBytes`; preserve the shared
   bounded-reader semantics and the stable error contract.
 - Do not add library stdout output. Return errors through the documented
   response types and keep logging, retries, orchestration, and policy in the
@@ -37,6 +39,9 @@ released module to another application must start with
 - `WhoisServer.Timeout` bounds connection establishment and the full lookup
   write/read exchange. Its zero value uses the five-second default. A shorter
   context deadline takes precedence for high-level calls.
+- `TeamCymruProvider` is always explicit, uses one bulk request for grouped
+  inputs, and never falls back to native PWHOIS. Its country and registry
+  fields are allocation metadata, not geolocation.
 - Respect server rate limits. Rate-limit responses and network errors are
   normal caller-visible outcomes, not conditions to hide with automatic retry.
 
@@ -45,8 +50,9 @@ released module to another application must start with
 - Run `go test ./...`, `go vet ./...`, and `go build ./...` before opening a
   pull request. Use `go test -race ./...` when changing concurrency or network
   behavior.
-- Default tests must be deterministic and must not contact public PWHOIS
-  servers. Live checks are opt-in: `go test -tags=integration ./...`.
+- Default tests must be deterministic and must not contact public PWHOIS, Team
+  Cymru, or other provider servers. Native PWHOIS live checks are opt-in:
+  `go test -tags=integration ./...`.
 - Use reserved and synthetic addresses, ASNs, organizations, and response data
   in tests and documentation. Never commit live/private registry responses,
   contact data, credentials, local paths, or rate-limit artifacts.

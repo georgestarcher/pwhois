@@ -185,6 +185,7 @@ const (
 	ProviderErrorTimeout           ProviderErrorClass = "timeout"
 	ProviderErrorCanceled          ProviderErrorClass = "canceled"
 	ProviderErrorRateLimited       ProviderErrorClass = "rate_limited"
+	ProviderErrorRejected          ProviderErrorClass = "provider_rejected"
 	ProviderErrorResponseTooLarge  ProviderErrorClass = "response_too_large"
 	ProviderErrorMalformedResponse ProviderErrorClass = "malformed_response"
 	ProviderErrorNoRecords         ProviderErrorClass = "no_records"
@@ -209,6 +210,8 @@ func ClassifyProviderError(err error) ProviderErrorClass {
 		return ProviderErrorCanceled
 	case errors.Is(err, ErrRateLimited):
 		return ProviderErrorRateLimited
+	case errors.Is(err, ErrProviderRejected):
+		return ProviderErrorRejected
 	case errors.Is(err, ErrResponseTooLarge):
 		return ProviderErrorResponseTooLarge
 	case errors.Is(err, ErrMalformedResponse):
@@ -232,6 +235,8 @@ func providerErrorSentinel(class ProviderErrorClass) error {
 		return ErrCanceled
 	case ProviderErrorRateLimited:
 		return ErrRateLimited
+	case ProviderErrorRejected:
+		return ErrProviderRejected
 	case ProviderErrorResponseTooLarge:
 		return ErrResponseTooLarge
 	case ProviderErrorMalformedResponse:

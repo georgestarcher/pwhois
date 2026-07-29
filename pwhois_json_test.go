@@ -56,6 +56,14 @@ func TestPublicJSONRecordContracts(t *testing.T) {
 			value: Netblock{},
 			keys:  []string{"create_date", "modify_date", "net_name", "net_range", "net_type", "register_date", "source", "update_date"},
 		},
+		{
+			name:  "TeamCymruIPResult",
+			value: TeamCymruIPResult{},
+			keys: []string{
+				"allocated_date", "as_name", "country_code", "endpoint", "fetched_at", "found",
+				"ip", "origin_asns", "prefix", "registry", "source",
+			},
+		},
 	}
 
 	for _, test := range tests {

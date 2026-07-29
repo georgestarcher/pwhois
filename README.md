@@ -3,7 +3,10 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/georgestarcher/pwhois.svg)](https://pkg.go.dev/github.com/georgestarcher/pwhois)
 [![CI](https://github.com/georgestarcher/pwhois/actions/workflows/go.yml/badge.svg)](https://github.com/georgestarcher/pwhois/actions/workflows/go.yml)
 
-`pwhois` is a Go module for querying a [PWHOIS](https://pwhois.org/) server and parsing its IP, routing, registry, and netblock responses.
+`pwhois` is a Go module for querying a [PWHOIS](https://pwhois.org/)
+server and parsing its IP, routing, registry, and netblock responses. It also
+provides an explicit, source-specific client for
+[Team Cymru IP-to-ASN mapping](https://www.team-cymru.com/ip-asn-mapping).
 
 Created by George Starcher. The implementation references the original [`whob` source code](https://github.com/irr/whob/blob/master/whob).
 
@@ -13,6 +16,7 @@ Created by George Starcher. The implementation references the original [`whob` s
 - RouteView data for an autonomous system number (ASN)
 - Registry data for an ASN
 - Netblocks announced by an ASN
+- Team Cymru IP-to-origin-ASN and prefix enrichment
 
 ## Install
 
@@ -72,7 +76,7 @@ func main() {
 
 The other supported lookup types follow the same pattern. A configured
 `WhoisServer` may be shared by concurrent high-level calls as long as its
-	fields—and any custom `Dialer`—are not mutated while calls are
+fields—and any custom `Dialer`—are not mutated while calls are
 running. Every call uses an independent connection. The older `Connect`,
 `Connection`, query-formatter, channel-response API remains available for
 compatibility but is deprecated for new integrations; callers using it must
@@ -97,7 +101,8 @@ tested with `errors.Is`; error wording is not an API contract.
 | `ErrInvalidInput` | A query formatter rejected caller input. |
 | `ErrConnection` | The connection is absent or a network operation failed. |
 | `ErrTimeout` / `ErrCanceled` | The lookup deadline expired or its connection reported cancellation. |
-| `ErrRateLimited` | The PWHOIS server reported its query limit. |
+| `ErrRateLimited` | A provider reported its query limit. |
+| `ErrProviderRejected` | A provider rejected the query. |
 | `ErrResponseTooLarge` | The response exceeded `MaxResponseBytes`. |
 | `ErrMalformedResponse` | A non-empty response could not be parsed safely. |
 | `ErrNoRecords` | The server returned no records for the lookup. |
@@ -145,13 +150,54 @@ maintainers should use the [maintainer guide](AGENTS.md).
 | Registry | `LookupRegistryContext` | `RegistryRecord` |
 | Netblock | `LookupNetblockContext` | `NetblockRecord` |
 
-## PWHOIS servers
+## Team Cymru IP-to-ASN provider
+
+`TeamCymruProvider` uses Team Cymru's distinct bulk TCP protocol and
+pipe-delimited response format. It is not a replacement hostname for
+`WhoisServer`. The provider validates and deduplicates all inputs, sends one
+bounded bulk request even for a single address, and returns
+`[]TeamCymruIPResult` with explicit source, endpoint, and fetch-time
+provenance.
+
+```go
+provider := pwhois.TeamCymruProvider{
+	BatchMaxSize: 1000,
+}
+results, err := provider.LookupIPContext(context.Background(), []string{
+	"192.0.2.1",
+	"198.51.100.2",
+})
+```
+
+The zero value uses `whois.cymru.com:43`, a five-second timeout, a
+1,000-address batch limit, and the shared 8 MiB response limit. The provider
+never retries, falls back to PWHOIS, or automatically caches results.
+
+Team Cymru describes the returned country code, registry, and allocation date
+as RIR allocation metadata and explicitly warns that the service is not
+geolocation. The service recommends one bulk request for groups of addresses
+and warns against high volumes of individual WHOIS queries. It reports that
+its underlying mapping data is updated at four-hour intervals. Keep cache TTL
+and rate-limit policy explicit in the calling application.
+`TeamCymruProvider.CacheKeySpec` returns a source-, endpoint-, protocol-,
+parser-, and schema-aware identity for use with `CacheCoordinator`.
+
+Port 43 traffic is plaintext. Do not send an address to this third-party
+provider unless the calling application's privacy and data-handling policy
+allows it.
+
+## Providers and servers
 
 `SetDefaultValues` configures `whois.pwhois.org:43`. You can set `WhoisServer.Server` and `WhoisServer.Port` before calling `Connect`, but compatibility with alternative servers is not yet validated. Availability and rate limits are controlled by each server operator.
 
+`TeamCymruProvider` is the only additional protocol-specific provider
+currently implemented. Generic WHOIS, IRR, and RDAP endpoints are not
+drop-in-compatible with either client.
+
 ## Development
 
-The default checks are deterministic and do not contact public PWHOIS servers:
+The default checks are deterministic and do not contact public PWHOIS or Team
+Cymru servers:
 
 ```shell
 go test ./...
@@ -176,9 +222,14 @@ The live tests depend on the public service's availability, response data, and r
 
 ## JSON output
 
-The explicit JSON-tagged data records (`WhoIs`, `BGPRoute`, `BGPRoutes`, `RegistryRecord`, `Registry`, `NetblockRecord`, and `Netblock`) use normalized snake_case keys and are covered by serialization tests. Postal codes are text so leading zeros and alphanumeric values are preserved.
+The explicit JSON-tagged data records (`WhoIs`, `BGPRoute`, `BGPRoutes`,
+`RegistryRecord`, `Registry`, `NetblockRecord`, `Netblock`, and
+`TeamCymruIPResult`) use normalized snake_case keys and are covered by
+serialization tests. Postal codes are text so leading zeros and alphanumeric
+values are preserved.
 
-`WhoisServer` and the channel response wrappers are connection/control types, not JSON output contracts.
+`WhoisServer`, `TeamCymruProvider`, and the channel response wrappers are
+connection/control types, not JSON output contracts.
 
 ## License
 

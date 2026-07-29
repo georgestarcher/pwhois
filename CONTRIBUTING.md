@@ -5,7 +5,8 @@ Thanks for improving `pwhois`.
 ## Scope
 
 `pwhois` is a Go client and parser for native PWHOIS IP, RouteView, registry,
-and netblock queries. It is not a generic WHOIS, IRR, or RDAP client. Keep
+and netblock queries plus explicit source-specific providers such as Team
+Cymru IP-to-ASN mapping. It is not a generic WHOIS, IRR, or RDAP client. Keep
 network policy, retries, logging, storage, scheduling, and application actions
 in the consuming application.
 
@@ -20,7 +21,7 @@ go build ./...
 ```
 
 Also run `go test -race ./...` for concurrency or network changes. Public
-PWHOIS checks are opt-in and must not become required CI:
+provider checks are opt-in and must not become required CI:
 
 ```shell
 go test -tags=integration ./...
@@ -33,9 +34,9 @@ completed review, resolve actionable threads, and ensure CI is green.
 ## Tests and data
 
 Use deterministic loopback tests and synthetic/reserved values. Do not commit
-live PWHOIS responses, organization or contact data, credentials, local paths,
-or rate-limit artifacts. Keep private experiments under ignored paths such as
-`testdata/private/`.
+live provider responses, organization or contact data, credentials, local
+paths, or rate-limit artifacts. Keep private experiments under ignored paths
+such as `testdata/private/`.
 
 ## Public API and release impact
 

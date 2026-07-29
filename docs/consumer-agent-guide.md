@@ -24,7 +24,8 @@ go doc github.com/georgestarcher/pwhois
 
 Read the selected `go.mod` version and the project README. Do not copy future
 APIs from open issues or assume a generic WHOIS, IRR, or RDAP server accepts
-the PWHOIS query and response format.
+the PWHOIS query and response format. Team Cymru support uses the separate
+`TeamCymruProvider`; it is not a `WhoisServer` endpoint.
 
 ## Choose a lookup
 
@@ -38,6 +39,11 @@ the PWHOIS query and response format.
 Pass domain inputs to the high-level method instead of constructing wire text.
 ASN lookups accept decimal input with an optional `AS` prefix. The default IP
 batch limit is 500 addresses. Responses are limited to 8 MiB by default.
+
+For explicit BGP-origin enrichment from Team Cymru, use
+`TeamCymruProvider.LookupIPContext`. It accepts one or more IP addresses and
+returns `[]TeamCymruIPResult`. Do not route Team Cymru responses through the
+native PWHOIS parsers or treat its RIR allocation country code as geolocation.
 
 ## Connection and error handling
 
@@ -65,6 +71,12 @@ connection. A custom `ContextDialer` must itself be concurrency-safe and must
 honor its context. This hook is intended for deterministic tests and
 controlled transport integration.
 
+`TeamCymruProvider` follows the same owned-connection and concurrency model.
+Its zero value uses `whois.cymru.com:43`, a five-second timeout, a
+1,000-address batch limit, and the shared 8 MiB response limit. It sends one
+bulk request for all deduplicated inputs and does not automatically retry,
+fall back, or cache.
+
 `WhoisServer.MaxResponseBytes` bounds response data before parsing. Its zero
 value uses `DefaultMaxResponseBytes` (8 MiB), which provides more than 16 KiB
 per result in a maximum 500-address IP batch. Set a positive application-
@@ -74,12 +86,12 @@ returns a `*ResponseTooLargeError`. Detect it with
 `errors.Is(err, pwhois.ErrResponseTooLarge)`; do not compare error strings.
 
 Use `errors.Is` to classify every failure: `ErrInvalidInput`, `ErrConnection`,
-`ErrTimeout`, `ErrCanceled`, `ErrRateLimited`, `ErrResponseTooLarge`,
-`ErrMalformedResponse`, and `ErrNoRecords`. `Connect` and lookup failures are
-wrapped in `*OperationError`, so `errors.As` can retrieve the operation and
-configured endpoint without losing the underlying transport or parser cause.
-Do not compare error strings or expose full server response content in calling
-application logs.
+`ErrTimeout`, `ErrCanceled`, `ErrRateLimited`, `ErrProviderRejected`,
+`ErrResponseTooLarge`, `ErrMalformedResponse`, and `ErrNoRecords`. `Connect`
+and lookup failures are wrapped in `*OperationError`, so `errors.As` can
+retrieve the operation and configured endpoint without losing the underlying
+transport or parser cause. Do not compare error strings or expose full server
+response content in calling application logs.
 
 Handle connection, write, read, rate-limit, and parser errors as normal
 application outcomes. Do not silently retry rate-limit errors or treat a
@@ -98,6 +110,10 @@ integration, use one connected `WhoisServer` for one lookup and close its
 `LookupNetblockContext`. Supply a high-level lookup as the application's
 context-aware fetch operation and retain explicit source policy.
 
+`TeamCymruProvider.CacheKeySpec` builds the provider-specific cache identity.
+Configure a separate `SourceCachePolicy` for `TeamCymruSource`; do not reuse a
+native PWHOIS key or silently merge results from the two sources.
+
 If the application uses this cache contract, read the
 [cache contract guide](cache-contract.md). In particular, configure a policy
 for each source, version parser/result schemas in the key, inspect
@@ -106,18 +122,23 @@ response in `NormalizedResult`.
 
 ## Server and data boundaries
 
-`SetDefaultValues` configures `whois.pwhois.org:43`, the tested default. A
-different hostname alone does not establish compatibility with a generic WHOIS
-or IRR service. Public servers control their availability and rate limits.
+`SetDefaultValues` configures `whois.pwhois.org:43`, the tested native PWHOIS
+default. `TeamCymruProvider` explicitly configures the separate Team Cymru
+protocol. A different hostname alone does not establish compatibility with a
+generic WHOIS or IRR service. Public providers control their availability and
+rate limits, and port 43 sends queries in plaintext.
 
 Keep credentials, private addresses, live registry responses, contact data,
 and rate-limit details out of source code, committed fixtures, and prompts. Use
 synthetic/reserved documentation values such as `192.0.2.1` in examples.
+Only send an address to a third-party provider when the application's privacy
+policy permits it.
 
 ## Integration checklist
 
-1. Confirm that native PWHOIS is the required protocol and select one lookup.
-2. Inspect the chosen module version and its formatter and response type.
+1. Select native PWHOIS or the explicit Team Cymru provider based on the
+   required data source.
+2. Inspect the chosen module version, lookup method, and response type.
 3. Set application-appropriate timeout, response-size, and rate-limit policy.
 4. Classify every returned error with `errors.Is`, and test cancellation,
    malformed responses, and unavailable-server behavior in the application.

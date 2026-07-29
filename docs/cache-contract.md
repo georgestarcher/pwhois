@@ -10,10 +10,10 @@ The cache API separates three responsibilities:
    concurrent fetches for the same canonical key.
 
 This is cache infrastructure, not an implicit wrapper around the high-level
-PWHOIS client. Applications may use `LookupIPContext`,
-`LookupRouteViewContext`, `LookupRegistryContext`, or
-`LookupNetblockContext` inside their context-aware fetch operation, but they
-must still select a source, cache policy, and normalized result explicitly.
+provider clients. Applications may use the native PWHOIS context methods or
+`TeamCymruProvider.LookupIPContext` inside their context-aware fetch operation,
+but they must still select a source, cache policy, and normalized result
+explicitly.
 The deprecated channel-based lookup methods continue to require a caller-owned
 connection.
 
@@ -52,11 +52,11 @@ has no global TTL fallback:
 | `RateLimitedTTL` | Cache lifetime for `ErrRateLimited`; zero disables it. |
 | `MaxStale` | Maximum time after expiry that a successful result may be returned by stale-if-error; zero disables fallback. |
 
-Connection, timeout, cancellation, malformed-response, oversized-response,
-invalid-input, and unknown errors are not cached. Stale-if-error may use a
-successful stale result for a provider timeout, but does not hide cancellation
-or deadline expiry of the caller's context. It never falls back to a stale
-negative or rate-limit entry.
+Connection, timeout, cancellation, provider-rejection, malformed-response,
+oversized-response, invalid-input, and unknown errors are not cached.
+Stale-if-error may use a successful stale result for a provider timeout, but
+does not hide cancellation or deadline expiry of the caller's context. It
+never falls back to a stale negative or rate-limit entry.
 
 ## Lookup policies
 
