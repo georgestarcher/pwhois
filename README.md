@@ -7,7 +7,8 @@
 server and parsing its IP, routing, registry, and netblock responses. It also
 provides explicit, source-specific clients for
 [Team Cymru IP-to-ASN mapping](https://www.team-cymru.com/ip-asn-mapping) and
-[RIPE RISwhois observed BGP routes](https://ris.ripe.net/docs/ris-whois/).
+[RIPE RISwhois observed BGP routes](https://ris.ripe.net/docs/ris-whois/), plus
+standards-based [RDAP registration data](https://www.rfc-editor.org/rfc/rfc9224.html).
 
 Created by George Starcher. The implementation references the original [`whob` source code](https://github.com/irr/whob/blob/master/whob).
 
@@ -19,6 +20,7 @@ Created by George Starcher. The implementation references the original [`whob` s
 - Netblocks announced by an ASN
 - Team Cymru IP-to-origin-ASN and prefix enrichment
 - RIPE RISwhois observed prefix, origin ASN, and collector evidence
+- RDAP IP allocation/assignment and ASN registration context
 
 ## Install
 
@@ -153,6 +155,8 @@ maintainers should use the [maintainer guide](AGENTS.md).
 | Netblock | `LookupNetblockContext` | `NetblockRecord` |
 | Team Cymru IP-to-ASN | `TeamCymruProvider.LookupIPContext` | `[]TeamCymruIPResult` |
 | RISwhois observed route | `RISWhoisProvider.LookupRouteContext` | `[]RISWhoisRouteResult` |
+| RDAP IP registration | `RDAPProvider.LookupIPContext` | `RDAPIPResult` |
+| RDAP ASN registration | `RDAPProvider.LookupASNContext` | `RDAPASNResult` |
 
 ## Team Cymru IP-to-ASN provider
 
@@ -235,18 +239,73 @@ Port 43 traffic is plaintext. Do not send an address or prefix to this
 third-party provider unless the calling application's privacy and data-handling
 policy allows it.
 
+## RDAP registration provider
+
+`RDAPProvider` performs HTTPS/JSON registration lookups for one IP address or
+ASN. It resolves the authoritative service through the
+[IANA RDAP bootstrap registries defined by RFC 9224](https://www.rfc-editor.org/rfc/rfc9224.html),
+caches those bootstrap documents using their HTTP expiry, and follows
+transfers/referrals manually. The final registration range must contain the
+query.
+
+```go
+provider := pwhois.RDAPProvider{}
+registration, err := provider.LookupIPContext(
+	context.Background(),
+	"192.0.2.1",
+)
+
+asnRegistration, err := provider.LookupASNContext(
+	context.Background(),
+	"AS64500",
+)
+```
+
+The zero value uses a shared cached IANA bootstrap resolver, the default HTTP
+client, a five-second total deadline, an 8 MiB final-response limit, and at
+most three referrals. Both bootstrap and final responses enforce their
+documented JSON content type. Public bootstrap and RDAP URLs must use HTTPS.
+Use `NewRDAPProvider(client)` when a custom HTTP client must serve both
+bootstrap and authoritative requests with a provider-owned bootstrap cache.
+Cross-origin referrals are accepted only when their authority appears in the
+same trusted IANA bootstrap document, the requested IP or ASN is unchanged,
+and the bounded chain has no loop. `AllowInsecureHTTP` and
+`AllowPrivateNetworkTargets` exist only for controlled local test
+infrastructure and should not be enabled for public traffic.
+
+`RDAPIPResult` and `RDAPASNResult` contain allocation/range identifiers,
+status, provider events, public registered-organization values, abuse entity
+handles, redaction indicators, final registry provenance, and fetch time.
+They deliberately omit full jCards, personal names, email addresses, telephone
+numbers, postal addresses, event actors, raw JSON, and redaction JSON paths.
+This keeps normalized cached values privacy-minimized. It does not make public
+organization or entity handles non-sensitive; applications still control
+retention and display.
+
+HTTP 404 and 429 responses map to `ErrNoRecords` and `ErrRateLimited`.
+Applications must enforce source/registry-specific request rates and retry
+policy; the provider does not retry or fail over automatically.
+`RDAPProvider.IPCacheKeySpec` and `ASNCacheKeySpec` distinguish object type,
+bootstrap identity, referral bound, transport/target scope, privacy profile,
+parser, and result schema.
+A 24-hour success TTL, 15-minute no-record TTL, 1-minute rate-limit TTL, and
+24-hour maximum successful-stale window are a reasonable starting point for
+registration enrichment; applications needing current transfer information
+should shorten or bypass it.
+
 ## Providers and servers
 
 `SetDefaultValues` configures `whois.pwhois.org:43`. You can set `WhoisServer.Server` and `WhoisServer.Port` before calling `Connect`, but compatibility with alternative servers is not yet validated. Availability and rate limits are controlled by each server operator.
 
-`TeamCymruProvider` and `RISWhoisProvider` are separate protocol-specific
-providers. Generic WHOIS, IRR, and RDAP endpoints are not drop-in-compatible
-with these clients.
+`TeamCymruProvider`, `RISWhoisProvider`, and `RDAPProvider` are separate
+protocol-specific providers. Generic WHOIS and IRR endpoints are not
+drop-in-compatible with these clients, and arbitrary RDAP base URLs are not
+substitutes for the bootstrap/referral contract.
 
 ## Development
 
 The default checks are deterministic and do not contact public PWHOIS, Team
-Cymru, or RISwhois servers:
+Cymru, RISwhois, IANA bootstrap, or RDAP servers:
 
 ```shell
 go test ./...
@@ -273,12 +332,15 @@ The live tests depend on the public service's availability, response data, and r
 
 The explicit JSON-tagged data records (`WhoIs`, `BGPRoute`, `BGPRoutes`,
 `RegistryRecord`, `Registry`, `NetblockRecord`, `Netblock`, and
-`TeamCymruIPResult`, `RISWhoisObservation`, and `RISWhoisRouteResult`) use
-normalized snake_case keys and are covered by serialization tests. Postal
-codes are text so leading zeros and alphanumeric values are preserved.
+`TeamCymruIPResult`, `RISWhoisObservation`, `RISWhoisRouteResult`, `RDAPEvent`,
+`RDAPEntityReference`, `RDAPRedactionIndicator`, `RDAPIPResult`, and
+`RDAPASNResult`) use normalized snake_case keys and are covered by serialization
+tests. Postal codes are text so leading zeros and alphanumeric values are
+preserved.
 
-`WhoisServer`, `TeamCymruProvider`, `RISWhoisProvider`, and the channel response
-wrappers are connection/control types, not JSON output contracts.
+`WhoisServer`, `TeamCymruProvider`, `RISWhoisProvider`, `RDAPProvider`, bootstrap
+resolvers, and the channel response wrappers are connection/control types, not
+JSON output contracts.
 
 ## License
 

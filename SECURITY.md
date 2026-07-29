@@ -22,3 +22,14 @@ module bounds connection time, lookup I/O time, and response size, but
 applications remain responsible for their chosen provider, privacy policy,
 rate-limit policy, data retention, and how results are displayed or acted
 upon. Port 43 queries are plaintext.
+
+RDAP lookups require HTTPS by default and follow only bounded referrals whose
+authority appeared in the trusted bootstrap document. Normalized RDAP results
+omit complete jCards, personal names, email addresses, telephone numbers,
+postal addresses, event actors, raw JSON, and redaction paths. Do not enable
+the insecure-HTTP or private-network target options for public lookups.
+Public-only mode also rejects DNS results in private, reserved, documentation,
+benchmarking, and other IANA special-purpose ranges at dial time, and bypasses
+HTTP proxies whose remote resolution could evade that check. A custom HTTP
+transport or bootstrap resolver is part of the application's trust boundary
+and must not inject credentials or authorize arbitrary internal destinations.

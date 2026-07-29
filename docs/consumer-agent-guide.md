@@ -26,7 +26,8 @@ Read the selected `go.mod` version and the project README. Do not copy future
 APIs from open issues or assume a generic WHOIS, IRR, or RDAP server accepts
 the PWHOIS query and response format. Team Cymru support uses the separate
 `TeamCymruProvider`, and RISwhois support uses `RISWhoisProvider`; neither is
-a `WhoisServer` endpoint.
+a `WhoisServer` endpoint. Registration lookups use `RDAPProvider` with IANA
+bootstrap discovery rather than a caller-selected legacy WHOIS hostname.
 
 ## Choose a lookup
 
@@ -52,6 +53,12 @@ and returns every matching `RISWhoisRouteResult`. IP queries request all
 longest-match origins; prefix queries request exact matches. These are
 observations from collected routing tables, not RIR registration, geolocation,
 or published IRR policy.
+
+For registration/allocation context, use `RDAPProvider.LookupIPContext` or
+`LookupASNContext`. These return privacy-minimized `RDAPIPResult` or
+`RDAPASNResult` values. They omit complete jCards, personal names, contact
+details, addresses, event actors, raw JSON, and redaction paths. Do not infer
+current routing or geolocation from RDAP registration data.
 
 ## Connection and error handling
 
@@ -89,6 +96,15 @@ fall back, or cache.
 Its zero value uses `riswhois.ripe.net:43`, a five-second timeout, and the
 shared 8 MiB response limit. It performs one query, preserves multiple origins,
 and does not automatically retry, fall back, or cache.
+
+`RDAPProvider` applies one deadline to bootstrap resolution and the final
+lookup. Its zero value uses the shared cached IANA bootstrap resolver, HTTPS,
+an 8 MiB final-response bound, and at most three manually followed referrals.
+Use `NewRDAPProvider(client)` when both bootstrap and authoritative requests
+must use a custom HTTP client with a provider-owned bootstrap cache.
+Cross-origin referrals must retain the same IP or ASN and target an authority
+listed in the trusted bootstrap document. Do not enable insecure HTTP or
+private-network targets outside controlled local tests.
 
 `WhoisServer.MaxResponseBytes` bounds response data before parsing. Its zero
 value uses `DefaultMaxResponseBytes` (8 MiB), which provides more than 16 KiB
@@ -134,6 +150,13 @@ for `RISWhoisSource`. A 15-minute success TTL, 5-minute no-record TTL,
 reasonable short-lived starting policy; callers needing current routing
 evidence should shorten or bypass it.
 
+`RDAPProvider.IPCacheKeySpec` and `ASNCacheKeySpec` include the bootstrap
+identity, object type, referral bound, transport/target scope, privacy profile,
+parser, and result schema. Configure a separate policy for `RDAPSource`. A
+24-hour success TTL, 15-minute no-record TTL, 1-minute rate-limit TTL, and
+24-hour maximum successful-stale window are a reasonable
+registration-enrichment starting point.
+
 If the application uses this cache contract, read the
 [cache contract guide](cache-contract.md). In particular, configure a policy
 for each source, version parser/result schemas in the key, inspect
@@ -145,9 +168,10 @@ response in `NormalizedResult`.
 `SetDefaultValues` configures `whois.pwhois.org:43`, the tested native PWHOIS
 default. `TeamCymruProvider` explicitly configures the separate Team Cymru
 protocol, and `RISWhoisProvider` explicitly configures RISwhois RPSL routing
-observations. A different hostname alone does not establish compatibility with
-a generic WHOIS or IRR service. Public providers control their availability
-and rate limits, and port 43 sends queries in plaintext.
+observations. `RDAPProvider` explicitly uses IANA bootstrap registries and
+bounded referral validation. A different hostname alone does not establish
+compatibility with a generic WHOIS or IRR service. Public providers control
+their availability and rate limits, and port 43 sends queries in plaintext.
 
 Keep credentials, private addresses, live registry responses, contact data,
 and rate-limit details out of source code, committed fixtures, and prompts. Use
@@ -157,8 +181,8 @@ policy permits it.
 
 ## Integration checklist
 
-1. Select native PWHOIS, Team Cymru, or RISwhois based on the required data
-   source and semantics.
+1. Select native PWHOIS, Team Cymru, RISwhois, or RDAP based on the required
+   data source and semantics.
 2. Inspect the chosen module version, lookup method, and response type.
 3. Set application-appropriate timeout, response-size, and rate-limit policy.
 4. Classify every returned error with `errors.Is`, and test cancellation,
