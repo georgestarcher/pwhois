@@ -45,6 +45,7 @@ var (
 	ErrTimeout           = errors.New("pwhois lookup timed out")
 	ErrCanceled          = errors.New("pwhois lookup canceled")
 	ErrRateLimited       = errors.New("pwhois server rate limit exceeded")
+	ErrProviderRejected  = errors.New("pwhois provider rejected query")
 	ErrResponseTooLarge  = errors.New("pwhois response exceeds maximum size")
 	ErrMalformedResponse = errors.New("pwhois malformed response")
 	ErrNoRecords         = errors.New("pwhois no records returned")
