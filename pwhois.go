@@ -211,10 +211,12 @@ func parseResponseFloat64(field, value string) (float64, error) {
 	return parsed, nil
 }
 
-// DialContextFunc establishes a network connection for a high-level lookup.
-// The default uses net.Dialer. Tests and applications with custom transports
+// ContextDialer establishes a network connection for a high-level lookup.
+// The default is a net.Dialer. Tests and applications with custom transports
 // may supply a replacement that honors context cancellation.
-type DialContextFunc func(ctx context.Context, network, address string) (net.Conn, error)
+type ContextDialer interface {
+	DialContext(ctx context.Context, network, address string) (net.Conn, error)
+}
 
 // Whois server object
 type WhoisServer struct {
@@ -227,10 +229,10 @@ type WhoisServer struct {
 	// MaxResponseBytes bounds response data read before parsing. A value less
 	// than or equal to zero uses DefaultMaxResponseBytes.
 	MaxResponseBytes int64
-	// DialContext optionally replaces the default TCP dialer used by the
+	// Dialer optionally replaces the default TCP dialer used by the
 	// context-aware high-level lookup methods. A replacement must be safe for
 	// concurrent use when the WhoisServer is shared by concurrent callers.
-	DialContext DialContextFunc
+	Dialer ContextDialer
 	// Connection is used only by the deprecated low-level Connect and channel
 	// lookup API. High-level context-aware lookups ignore this field and own a
 	// separate connection per call.

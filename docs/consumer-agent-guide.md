@@ -61,8 +61,8 @@ Cancellation interrupts an in-progress dial, write, or read.
 
 A configured `WhoisServer` is safe for concurrent high-level calls when the
 application does not mutate its fields during use. Each call has an independent
-connection. A custom `DialContext` hook must itself be concurrency-safe and
-must honor its context. This hook is intended for deterministic tests and
+connection. A custom `ContextDialer` must itself be concurrency-safe and must
+honor its context. This hook is intended for deterministic tests and
 controlled transport integration.
 
 `WhoisServer.MaxResponseBytes` bounds response data before parsing. Its zero

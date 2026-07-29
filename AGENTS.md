@@ -29,8 +29,8 @@ released module to another application must start with
 
 - Prefer the context-aware high-level lookup methods. Each call owns one
   connection from dial through close. A configured `WhoisServer` is safe for
-  concurrent high-level calls only while its fields and custom `DialContext`
-  hook remain unchanged.
+  concurrent high-level calls only while its fields and custom `ContextDialer`
+  remain unchanged.
 - The deprecated low-level API remains a caller-owned lifecycle:
   call `Connect`, use one connection for one lookup, check the returned response
   error, and close `WhoisServer.Connection`.

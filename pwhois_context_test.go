@@ -12,6 +12,12 @@ import (
 	"time"
 )
 
+type contextDialerFunc func(ctx context.Context, network, address string) (net.Conn, error)
+
+func (dial contextDialerFunc) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	return dial(ctx, network, address)
+}
+
 const (
 	contextIPRequest       = "app=\"GO pwhois Module\"\n192.0.2.1\n"
 	contextRouteRequest    = "app=\"GO pwhois Module\" routeview source-as=64500\n"
@@ -109,7 +115,7 @@ func TestContextLookupZeroValueUsesDefaultsAndDialHook(t *testing.T) {
 	)
 	serverDone := make(chan error, 1)
 	server := WhoisServer{
-		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+		Dialer: contextDialerFunc(func(ctx context.Context, network, address string) (net.Conn, error) {
 			gotNetwork = network
 			gotAddress = address
 			client, provider := net.Pipe()
@@ -128,7 +134,7 @@ func TestContextLookupZeroValueUsesDefaultsAndDialHook(t *testing.T) {
 				serverDone <- err
 			}()
 			return client, nil
-		},
+		}),
 	}
 
 	records, err := server.LookupIPContext(context.Background(), []string{"192.0.2.1"})
@@ -195,11 +201,11 @@ func TestContextLookupCallerDeadlineTakesPrecedence(t *testing.T) {
 func TestContextLookupCancellationReachesDialer(t *testing.T) {
 	dialStarted := make(chan struct{})
 	server := WhoisServer{
-		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		Dialer: contextDialerFunc(func(ctx context.Context, _, _ string) (net.Conn, error) {
 			close(dialStarted)
 			<-ctx.Done()
 			return nil, ctx.Err()
-		},
+		}),
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
@@ -216,10 +222,10 @@ func TestContextLookupCancellationReachesDialer(t *testing.T) {
 func TestContextLookupTimeoutReachesDialer(t *testing.T) {
 	server := WhoisServer{
 		Timeout: 50 * time.Millisecond,
-		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		Dialer: contextDialerFunc(func(ctx context.Context, _, _ string) (net.Conn, error) {
 			<-ctx.Done()
 			return nil, ctx.Err()
-		},
+		}),
 	}
 
 	_, err := server.LookupIPContext(context.Background(), []string{"192.0.2.1"})
@@ -239,7 +245,7 @@ func TestContextLookupsAreSafeForConcurrentUse(t *testing.T) {
 	var dialCount atomic.Int64
 	serverErrors := make(chan error, 32)
 	server := WhoisServer{
-		DialContext: func(context.Context, string, string) (net.Conn, error) {
+		Dialer: contextDialerFunc(func(context.Context, string, string) (net.Conn, error) {
 			dialCount.Add(1)
 			client, provider := net.Pipe()
 			go func() {
@@ -257,7 +263,7 @@ func TestContextLookupsAreSafeForConcurrentUse(t *testing.T) {
 				serverErrors <- err
 			}()
 			return client, nil
-		},
+		}),
 	}
 
 	var wait sync.WaitGroup
@@ -288,5 +294,14 @@ func TestContextLookupsAreSafeForConcurrentUse(t *testing.T) {
 	}
 	if server.Connection != nil {
 		t.Error("concurrent context lookups mutated shared Connection")
+	}
+}
+
+func TestWhoisServerRemainsComparable(t *testing.T) {
+	servers := map[WhoisServer]string{
+		{}: "zero value",
+	}
+	if got := servers[WhoisServer{}]; got != "zero value" {
+		t.Fatalf("map lookup = %q, want zero value", got)
 	}
 }

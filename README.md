@@ -72,7 +72,7 @@ func main() {
 
 The other supported lookup types follow the same pattern. A configured
 `WhoisServer` may be shared by concurrent high-level calls as long as its
-fields—and any custom `DialContext` function—are not mutated while calls are
+	fields—and any custom `Dialer`—are not mutated while calls are
 running. Every call uses an independent connection. The older `Connect`,
 `Connection`, query-formatter, channel-response API remains available for
 compatibility but is deprecated for new integrations; callers using it must
@@ -81,7 +81,7 @@ continue to use one connected server per lookup and close the connection.
 All four lookup methods enforce the same response-size limit before parsing.
 An over-limit response closes its connection and returns a
 `*pwhois.ResponseTooLargeError`; callers can detect the stable failure class
-with `errors.Is(response.Error, pwhois.ErrResponseTooLarge)`. The error reports
+with `errors.Is(err, pwhois.ErrResponseTooLarge)`. The error reports
 the configured limit but does not include remote response content. The 8 MiB
 default provides more than 16 KiB per result for a maximum 500-address IP
 batch. RouteView or netblock queries with unusually large legitimate results
@@ -89,8 +89,8 @@ may require a higher application-specific limit.
 
 ## Error handling
 
-Every formatter, `Connect`, and lookup response error uses a stable class that
-can be tested with `errors.Is`; error wording is not an API contract.
+Every formatter, connection, and lookup error uses a stable class that can be
+tested with `errors.Is`; error wording is not an API contract.
 
 | Error class | Meaning |
 | --- | --- |
@@ -161,7 +161,8 @@ go build ./...
 
 The required test suite includes an IPv4 loopback-only scripted PWHOIS server
 that verifies the complete connect, exact request, response, orderly EOF, and
-caller-owned connection cleanup lifecycle for every supported lookup type.
+connection cleanup lifecycle for every supported lookup type. It covers both
+automatic high-level cleanup and the deprecated caller-owned lifecycle.
 Malformed, truncated, rate-limited, oversized, and non-responsive server paths
 also use deterministic local fixtures.
 

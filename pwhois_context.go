@@ -12,8 +12,8 @@ func (server WhoisServer) configured() WhoisServer {
 }
 
 func (server WhoisServer) dial(ctx context.Context) (net.Conn, error) {
-	if server.DialContext != nil {
-		return server.DialContext(ctx, "tcp", server.ServerAddressString())
+	if server.Dialer != nil {
+		return server.Dialer.DialContext(ctx, "tcp", server.ServerAddressString())
 	}
 
 	dialer := &net.Dialer{
@@ -59,8 +59,8 @@ func (server WhoisServer) executeOwnedQuery(ctx context.Context, operation, quer
 //
 // The method honors context cancellation and the shorter of the context
 // deadline and WhoisServer.Timeout. It is safe to call concurrently on the
-// same WhoisServer when its configuration and any custom DialContext function
-// are not mutated during the calls.
+// same WhoisServer when its configuration and any custom Dialer are not
+// mutated during the calls.
 func (server WhoisServer) LookupIPContext(ctx context.Context, values []string) ([]WhoIs, error) {
 	server = server.configured()
 	query, err := server.FormatIpQuery(values)
