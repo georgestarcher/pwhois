@@ -25,7 +25,8 @@ go doc github.com/georgestarcher/pwhois
 Read the selected `go.mod` version and the project README. Do not copy future
 APIs from open issues or assume a generic WHOIS, IRR, or RDAP server accepts
 the PWHOIS query and response format. Team Cymru support uses the separate
-`TeamCymruProvider`; it is not a `WhoisServer` endpoint.
+`TeamCymruProvider`, and RISwhois support uses `RISWhoisProvider`; neither is
+a `WhoisServer` endpoint.
 
 ## Choose a lookup
 
@@ -44,6 +45,13 @@ For explicit BGP-origin enrichment from Team Cymru, use
 `TeamCymruProvider.LookupIPContext`. It accepts one or more IP addresses and
 returns `[]TeamCymruIPResult`. Do not route Team Cymru responses through the
 native PWHOIS parsers or treat its RIR allocation country code as geolocation.
+
+For observed BGP route evidence from RIPE RIS collectors, use
+`RISWhoisProvider.LookupRouteContext`. It accepts one IP address or CIDR prefix
+and returns every matching `RISWhoisRouteResult`. IP queries request all
+longest-match origins; prefix queries request exact matches. These are
+observations from collected routing tables, not RIR registration, geolocation,
+or published IRR policy.
 
 ## Connection and error handling
 
@@ -76,6 +84,11 @@ Its zero value uses `whois.cymru.com:43`, a five-second timeout, a
 1,000-address batch limit, and the shared 8 MiB response limit. It sends one
 bulk request for all deduplicated inputs and does not automatically retry,
 fall back, or cache.
+
+`RISWhoisProvider` also follows that owned-connection and concurrency model.
+Its zero value uses `riswhois.ripe.net:43`, a five-second timeout, and the
+shared 8 MiB response limit. It performs one query, preserves multiple origins,
+and does not automatically retry, fall back, or cache.
 
 `WhoisServer.MaxResponseBytes` bounds response data before parsing. Its zero
 value uses `DefaultMaxResponseBytes` (8 MiB), which provides more than 16 KiB
@@ -114,6 +127,13 @@ context-aware fetch operation and retain explicit source policy.
 Configure a separate `SourceCachePolicy` for `TeamCymruSource`; do not reuse a
 native PWHOIS key or silently merge results from the two sources.
 
+`RISWhoisProvider.CacheKeySpec` also records whether the normalized query is a
+longest-match IP lookup or an exact prefix lookup. Configure a separate policy
+for `RISWhoisSource`. A 15-minute success TTL, 5-minute no-record TTL,
+1-minute rate-limit TTL, and 30-minute maximum successful-stale window are a
+reasonable short-lived starting policy; callers needing current routing
+evidence should shorten or bypass it.
+
 If the application uses this cache contract, read the
 [cache contract guide](cache-contract.md). In particular, configure a policy
 for each source, version parser/result schemas in the key, inspect
@@ -124,9 +144,10 @@ response in `NormalizedResult`.
 
 `SetDefaultValues` configures `whois.pwhois.org:43`, the tested native PWHOIS
 default. `TeamCymruProvider` explicitly configures the separate Team Cymru
-protocol. A different hostname alone does not establish compatibility with a
-generic WHOIS or IRR service. Public providers control their availability and
-rate limits, and port 43 sends queries in plaintext.
+protocol, and `RISWhoisProvider` explicitly configures RISwhois RPSL routing
+observations. A different hostname alone does not establish compatibility with
+a generic WHOIS or IRR service. Public providers control their availability
+and rate limits, and port 43 sends queries in plaintext.
 
 Keep credentials, private addresses, live registry responses, contact data,
 and rate-limit details out of source code, committed fixtures, and prompts. Use
@@ -136,8 +157,8 @@ policy permits it.
 
 ## Integration checklist
 
-1. Select native PWHOIS or the explicit Team Cymru provider based on the
-   required data source.
+1. Select native PWHOIS, Team Cymru, or RISwhois based on the required data
+   source and semantics.
 2. Inspect the chosen module version, lookup method, and response type.
 3. Set application-appropriate timeout, response-size, and rate-limit policy.
 4. Classify every returned error with `errors.Is`, and test cancellation,

@@ -5,8 +5,9 @@
 
 `pwhois` is a Go module for querying a [PWHOIS](https://pwhois.org/)
 server and parsing its IP, routing, registry, and netblock responses. It also
-provides an explicit, source-specific client for
-[Team Cymru IP-to-ASN mapping](https://www.team-cymru.com/ip-asn-mapping).
+provides explicit, source-specific clients for
+[Team Cymru IP-to-ASN mapping](https://www.team-cymru.com/ip-asn-mapping) and
+[RIPE RISwhois observed BGP routes](https://ris.ripe.net/docs/ris-whois/).
 
 Created by George Starcher. The implementation references the original [`whob` source code](https://github.com/irr/whob/blob/master/whob).
 
@@ -17,6 +18,7 @@ Created by George Starcher. The implementation references the original [`whob` s
 - Registry data for an ASN
 - Netblocks announced by an ASN
 - Team Cymru IP-to-origin-ASN and prefix enrichment
+- RIPE RISwhois observed prefix, origin ASN, and collector evidence
 
 ## Install
 
@@ -149,6 +151,8 @@ maintainers should use the [maintainer guide](AGENTS.md).
 | RouteView | `LookupRouteViewContext` | `BGPRoutes` |
 | Registry | `LookupRegistryContext` | `RegistryRecord` |
 | Netblock | `LookupNetblockContext` | `NetblockRecord` |
+| Team Cymru IP-to-ASN | `TeamCymruProvider.LookupIPContext` | `[]TeamCymruIPResult` |
+| RISwhois observed route | `RISWhoisProvider.LookupRouteContext` | `[]RISWhoisRouteResult` |
 
 ## Team Cymru IP-to-ASN provider
 
@@ -189,18 +193,60 @@ Port 43 traffic is plaintext. Do not send an address to this third-party
 provider unless the calling application's privacy and data-handling policy
 allows it.
 
+## RIPE RISwhois observed-route provider
+
+`RISWhoisProvider` queries the most recently collected BGP routing tables
+exposed by RIPE RISwhois. An IP address requests all longest-match origins; a
+CIDR prefix requests exact matches. Multiple-origin results remain separate.
+The result exposes the matched prefix, origin ASN, descriptions, collector
+visibility, RIS peer count, provider observation timestamps, and all ordered
+values for every RPSL attribute, with explicit source, endpoint, and client
+fetch-time provenance.
+
+```go
+provider := pwhois.RISWhoisProvider{}
+routes, err := provider.LookupRouteContext(
+	context.Background(),
+	"192.0.2.1",
+)
+```
+
+The zero value uses `riswhois.ripe.net:43`, a five-second timeout, and the
+shared 8 MiB response limit. The provider never retries, falls back to another
+source, or automatically caches results. It sends `-M` for an IP longest-match
+query and `-x` for an exact prefix query, preserving multiple origins rather
+than selecting only the majority origin.
+
+RISwhois data is observed BGP routing evidence from RIPE RIS collectors. It is
+not RIR allocation or ownership data, geolocation, or an Internet Routing
+Registry statement of published routing policy. `FirstObserved` and
+`LastObserved` are timestamps supplied by the provider; `FetchedAt` is when
+this client received the response.
+
+`RISWhoisProvider.CacheKeySpec` separates the source, endpoint, IP-versus-prefix
+match mode, protocol, parser, and result schema. The application must still
+configure an explicit `SourceCachePolicy`. A reasonable short-lived starting
+policy for operational enrichment is a 15-minute successful-result TTL,
+5-minute no-record TTL, 1-minute rate-limit TTL, and at most 30 minutes of
+successful stale data; applications needing fresher routing evidence should
+shorten or bypass that cache deliberately.
+
+Port 43 traffic is plaintext. Do not send an address or prefix to this
+third-party provider unless the calling application's privacy and data-handling
+policy allows it.
+
 ## Providers and servers
 
 `SetDefaultValues` configures `whois.pwhois.org:43`. You can set `WhoisServer.Server` and `WhoisServer.Port` before calling `Connect`, but compatibility with alternative servers is not yet validated. Availability and rate limits are controlled by each server operator.
 
-`TeamCymruProvider` is the only additional protocol-specific provider
-currently implemented. Generic WHOIS, IRR, and RDAP endpoints are not
-drop-in-compatible with either client.
+`TeamCymruProvider` and `RISWhoisProvider` are separate protocol-specific
+providers. Generic WHOIS, IRR, and RDAP endpoints are not drop-in-compatible
+with these clients.
 
 ## Development
 
-The default checks are deterministic and do not contact public PWHOIS or Team
-Cymru servers:
+The default checks are deterministic and do not contact public PWHOIS, Team
+Cymru, or RISwhois servers:
 
 ```shell
 go test ./...
@@ -227,12 +273,12 @@ The live tests depend on the public service's availability, response data, and r
 
 The explicit JSON-tagged data records (`WhoIs`, `BGPRoute`, `BGPRoutes`,
 `RegistryRecord`, `Registry`, `NetblockRecord`, `Netblock`, and
-`TeamCymruIPResult`) use normalized snake_case keys and are covered by
-serialization tests. Postal codes are text so leading zeros and alphanumeric
-values are preserved.
+`TeamCymruIPResult`, `RISWhoisObservation`, and `RISWhoisRouteResult`) use
+normalized snake_case keys and are covered by serialization tests. Postal
+codes are text so leading zeros and alphanumeric values are preserved.
 
-`WhoisServer`, `TeamCymruProvider`, and the channel response wrappers are
-connection/control types, not JSON output contracts.
+`WhoisServer`, `TeamCymruProvider`, `RISWhoisProvider`, and the channel response
+wrappers are connection/control types, not JSON output contracts.
 
 ## License
 

@@ -10,10 +10,11 @@ another application must start with
 ## Scope and contracts
 
 - `pwhois` supports native PWHOIS IP, RouteView, registry, and netblock queries
-  plus the explicit `TeamCymruProvider` IP-to-ASN protocol. It is not a generic
-  WHOIS, IRR, or RDAP client. Changing only `WhoisServer.Server` or a provider
-  hostname does not establish compatibility with another response format; add
-  a source-specific implementation and tests first.
+  plus the explicit `TeamCymruProvider` IP-to-ASN and `RISWhoisProvider`
+  observed-route protocols. It is not a generic WHOIS, IRR, or RDAP client.
+  Changing only `WhoisServer.Server` or a provider hostname does not establish
+  compatibility with another response format; add a source-specific
+  implementation and tests first.
 - The exported Go API, JSON field names, README, and deterministic tests are
   consumer-facing contracts. Keep them aligned when behavior changes. Preserve
   the serialization conventions corrected in #22 and #25 deliberately; use
@@ -42,6 +43,9 @@ another application must start with
 - `TeamCymruProvider` is always explicit, uses one bulk request for grouped
   inputs, and never falls back to native PWHOIS. Its country and registry
   fields are allocation metadata, not geolocation.
+- `RISWhoisProvider` is always explicit, uses longest-match IP or exact-match
+  prefix queries, and never falls back. Its output is observed BGP evidence
+  from RIPE RIS collectors, not RIR registration, geolocation, or IRR policy.
 - Respect server rate limits. Rate-limit responses and network errors are
   normal caller-visible outcomes, not conditions to hide with automatic retry.
 
@@ -51,7 +55,7 @@ another application must start with
   pull request. Use `go test -race ./...` when changing concurrency or network
   behavior.
 - Default tests must be deterministic and must not contact public PWHOIS, Team
-  Cymru, or other provider servers. Native PWHOIS live checks are opt-in:
+  Cymru, RISwhois, or other provider servers. Native PWHOIS live checks are opt-in:
   `go test -tags=integration ./...`.
 - Use reserved and synthetic addresses, ASNs, organizations, and response data
   in tests and documentation. Never commit live/private registry responses,

@@ -11,9 +11,10 @@ The cache API separates three responsibilities:
 
 This is cache infrastructure, not an implicit wrapper around the high-level
 provider clients. Applications may use the native PWHOIS context methods or
-`TeamCymruProvider.LookupIPContext` inside their context-aware fetch operation,
-but they must still select a source, cache policy, and normalized result
-explicitly.
+`TeamCymruProvider.LookupIPContext` or
+`RISWhoisProvider.LookupRouteContext` inside their context-aware fetch
+operation, but they must still select a source, cache policy, and normalized
+result explicitly.
 The deprecated channel-based lookup methods continue to require a caller-owned
 connection.
 
@@ -57,6 +58,14 @@ oversized-response, invalid-input, and unknown errors are not cached.
 Stale-if-error may use a successful stale result for a provider timeout, but
 does not hide cancellation or deadline expiry of the caller's context. It
 never falls back to a stale negative or rate-limit entry.
+
+Provider freshness differs by source. In particular, RISwhois reports the most
+recently collected RIPE RIS routing tables, so its cache must not share a key
+or policy with native PWHOIS, Team Cymru, registration, or future IRR data.
+For operational enrichment, a 15-minute success TTL, 5-minute no-record TTL,
+1-minute rate-limit TTL, and 30-minute maximum successful-stale window are a
+reasonable starting point. Applications using routing changes for alerts or
+decisions should choose a shorter TTL or bypass caching explicitly.
 
 ## Lookup policies
 

@@ -11,9 +11,10 @@ synthetic reproduction.
 ## Project scope
 
 This project supports native PWHOIS IP, RouteView, registry, and netblock
-queries plus its documented source-specific providers. Generic WHOIS, IRR,
-and RDAP protocols are outside its current scope; changing only the server
-hostname does not make them compatible.
+queries plus its documented source-specific providers. RISwhois support is
+observed BGP evidence and does not make this a generic IRR client. Generic
+WHOIS, IRR, and RDAP protocols are outside its current scope; changing only
+the server hostname does not make them compatible.
 
 ## Sensitive data and security
 
