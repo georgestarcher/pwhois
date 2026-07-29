@@ -321,6 +321,11 @@ func TestRDAPEntityDeduplicationPreservesDelimiterValues(t *testing.T) {
 			Handle:          "a\x00x",
 			Roles:           []string{"abuse"},
 		},
+		{
+			ObjectClassName: "entity",
+			Handle:          "a",
+			Roles:           []string{"x", "abuse"},
+		},
 	})
 	if err != nil {
 		t.Fatalf("normalize entities: %v", err)

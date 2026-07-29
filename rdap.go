@@ -809,33 +809,34 @@ func normalizeRDAPEntitiesAtDepth(values []rawRDAPEntity, depth int) ([]string, 
 }
 
 func deduplicateRDAPEntityReferences(values []RDAPEntityReference) []RDAPEntityReference {
+	seen := make(map[string]struct{}, len(values))
 	result := make([]RDAPEntityReference, 0, len(values))
 	for _, value := range values {
-		duplicate := false
-		for _, existing := range result {
-			if existing.Handle == value.Handle && equalStrings(existing.Roles, value.Roles) {
-				duplicate = true
-				break
-			}
-		}
-		if duplicate {
+		key := rdapEntityReferenceKey(value)
+		if _, found := seen[key]; found {
 			continue
 		}
+		seen[key] = struct{}{}
 		result = append(result, value)
 	}
 	return result
 }
 
-func equalStrings(left, right []string) bool {
-	if len(left) != len(right) {
-		return false
+func rdapEntityReferenceKey(value RDAPEntityReference) string {
+	var key strings.Builder
+	writeRDAPLengthPrefixedString(&key, value.Handle)
+	key.WriteByte('#')
+	key.WriteString(strconv.Itoa(len(value.Roles)))
+	for _, role := range value.Roles {
+		writeRDAPLengthPrefixedString(&key, role)
 	}
-	for index := range left {
-		if left[index] != right[index] {
-			return false
-		}
-	}
-	return true
+	return key.String()
+}
+
+func writeRDAPLengthPrefixedString(key *strings.Builder, value string) {
+	key.WriteString(strconv.Itoa(len(value)))
+	key.WriteByte(':')
+	key.WriteString(value)
 }
 
 func extractRDAPOrganizations(raw json.RawMessage) ([]string, error) {
