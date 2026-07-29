@@ -27,10 +27,11 @@ are opt-in:
 go test -tags=integration ./...
 ```
 
-Required native PWHOIS, Team Cymru, and RISwhois protocol coverage uses only
-scripted IPv4 loopback servers or injected connections. It exercises real TCP
-connect, request, response, EOF, timeout, cancellation, response bounds, and
-connection cleanup without depending on a public service.
+Required native PWHOIS, Team Cymru, RISwhois, IANA-bootstrap, and RDAP protocol
+coverage uses only scripted IPv4 loopback servers, local HTTP servers, or
+injected connections. It exercises connect, request, response, redirect,
+timeout, cancellation, response bounds, and connection cleanup without
+depending on a public service.
 
 The repository does not yet have a canonical documentation-validation command;
 that work is tracked in issue #28.

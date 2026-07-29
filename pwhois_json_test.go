@@ -77,6 +77,41 @@ func TestPublicJSONRecordContracts(t *testing.T) {
 				"origin_asn", "prefix", "query", "ris_peer_count", "rpsl_attributes", "seen_at", "source",
 			},
 		},
+		{
+			name:  "RDAPEvent",
+			value: RDAPEvent{},
+			keys:  []string{"action", "date"},
+		},
+		{
+			name:  "RDAPEntityReference",
+			value: RDAPEntityReference{},
+			keys:  []string{"handle", "roles"},
+		},
+		{
+			name:  "RDAPRedactionIndicator",
+			value: RDAPRedactionIndicator{},
+			keys:  []string{"method", "name", "reason"},
+		},
+		{
+			name:  "RDAPIPResult",
+			value: RDAPIPResult{},
+			keys: []string{
+				"abuse_contacts", "bootstrap_publication", "country_code", "end_address", "endpoint",
+				"events", "fetched_at", "handle", "ip_version", "name", "parent_handle", "query",
+				"redacted", "redactions", "referral_count", "registered_organizations", "registry",
+				"source", "start_address", "status", "type",
+			},
+		},
+		{
+			name:  "RDAPASNResult",
+			value: RDAPASNResult{},
+			keys: []string{
+				"abuse_contacts", "bootstrap_publication", "country_code", "end_autnum", "endpoint",
+				"events", "fetched_at", "handle", "name", "query", "redacted", "redactions",
+				"referral_count", "registered_organizations", "registry", "source", "start_autnum",
+				"status", "type",
+			},
+		},
 	}
 
 	for _, test := range tests {
