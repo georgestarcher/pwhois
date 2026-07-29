@@ -12,11 +12,12 @@ The cache API separates three responsibilities:
 This is cache infrastructure, not an implicit wrapper around the high-level
 provider clients. Applications may use the native PWHOIS context methods or
 `TeamCymruProvider.LookupIPContext` or
-`RISWhoisProvider.LookupRouteContext`, `RDAPProvider.LookupIPContext`, or
-`RDAPProvider.LookupASNContext` inside their context-aware fetch operation, but
-they must still select a source, cache policy, and normalized result explicitly.
-The deprecated channel-based lookup methods continue to require a caller-owned
-connection.
+`RISWhoisProvider.LookupRouteContext`,
+`IRRProvider.LookupRoutePolicyContext`, `RDAPProvider.LookupIPContext`, or
+`RDAPProvider.LookupASNContext` inside their context-aware fetch operation,
+but they must still select a source, cache policy, and normalized result
+explicitly. The deprecated channel-based lookup methods continue to require a
+caller-owned connection.
 
 ## Canonical keys and envelopes
 
@@ -61,11 +62,20 @@ never falls back to a stale negative or rate-limit entry.
 
 Provider freshness differs by source. In particular, RISwhois reports the most
 recently collected RIPE RIS routing tables, so its cache must not share a key
-or policy with native PWHOIS, Team Cymru, registration, or future IRR data.
+or policy with native PWHOIS, Team Cymru, registration, or IRR data.
 For operational enrichment, a 15-minute success TTL, 5-minute no-record TTL,
 1-minute rate-limit TTL, and 30-minute maximum successful-stale window are a
 reasonable starting point. Applications using routing changes for alerts or
 decisions should choose a shorter TTL or bypass caching explicitly.
+
+IRR keys must use `IRRProvider.CacheKeySpec` so allowlisted endpoint identity,
+exact query mode, route/route6 object selection, protocol, parser, and result
+schema cannot collide with observed routing or registration data. Normalized
+IRR results intentionally omit the raw RPSL object and contact attributes. A
+1-hour success TTL, 15-minute no-record TTL, 1-minute rate-limit TTL, and
+6-hour maximum successful-stale window are a conservative starting point;
+applications that depend on newly published policy should use a shorter TTL or
+bypass caching.
 
 RDAP keys must use `RDAPProvider.IPCacheKeySpec` or `ASNCacheKeySpec` so IP and
 ASN objects, bootstrap identity, referral bounds, transport/target scope,

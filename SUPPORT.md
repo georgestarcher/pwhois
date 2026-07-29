@@ -12,10 +12,11 @@ synthetic reproduction.
 
 This project supports native PWHOIS IP, RouteView, registry, and netblock
 queries plus its documented source-specific providers. RISwhois support is
-observed BGP evidence and does not make this a generic IRR client. RDAP support
-is limited to the documented IANA-bootstrap IP/ASN registration provider.
-Generic WHOIS and IRR protocols are outside its current scope; changing only
-the server hostname does not make them compatible.
+observed BGP evidence. IRR support is limited to exact route/route6 queries
+against the documented allowlisted IRRd endpoints. RDAP support is limited to
+the documented IANA-bootstrap IP/ASN registration provider. Generic WHOIS and
+arbitrary port-43 protocols are outside its scope; changing only a server
+hostname does not make them compatible.
 
 ## Sensitive data and security
 

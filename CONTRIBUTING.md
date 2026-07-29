@@ -6,9 +6,10 @@ Thanks for improving `pwhois`.
 
 `pwhois` is a Go client and parser for native PWHOIS IP, RouteView, registry,
 and netblock queries plus explicit source-specific providers such as Team
-Cymru IP-to-ASN mapping, RIPE RISwhois observed routes, and RDAP registration.
-It is not a generic WHOIS or IRR client. Keep network policy, retries, logging,
-storage, scheduling, and application actions in the consuming application.
+Cymru IP-to-ASN mapping, RIPE RISwhois observed routes, allowlisted IRR
+published route policy, and RDAP registration. It is not a generic WHOIS or
+arbitrary-server IRR client. Keep network policy, retries, logging, storage,
+scheduling, and application actions in the consuming application.
 
 ## Before opening a pull request
 

@@ -23,6 +23,12 @@ applications remain responsible for their chosen provider, privacy policy,
 rate-limit policy, data retention, and how results are displayed or acted
 upon. Port 43 queries are plaintext.
 
+IRR lookups accept only the documented endpoint identifiers and reject unknown
+values before dialing. A custom `ContextDialer` receives the selected
+allowlisted destination and is part of the application's trust boundary.
+Normalized IRR results deliberately omit raw RPSL objects and contact
+attributes; do not replace them with raw provider responses in caches or logs.
+
 RDAP lookups require HTTPS by default and follow only bounded referrals whose
 authority appeared in the trusted bootstrap document. Normalized RDAP results
 omit complete jCards, personal names, email addresses, telephone numbers,

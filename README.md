@@ -8,6 +8,7 @@ server and parsing its IP, routing, registry, and netblock responses. It also
 provides explicit, source-specific clients for
 [Team Cymru IP-to-ASN mapping](https://www.team-cymru.com/ip-asn-mapping) and
 [RIPE RISwhois observed BGP routes](https://ris.ripe.net/docs/ris-whois/), plus
+allowlisted IRRd exact-prefix lookups for published IRR routing policy and
 standards-based [RDAP registration data](https://www.rfc-editor.org/rfc/rfc9224.html).
 
 Created by George Starcher. The implementation references the original [`whob` source code](https://github.com/irr/whob/blob/master/whob).
@@ -20,6 +21,7 @@ Created by George Starcher. The implementation references the original [`whob` s
 - Netblocks announced by an ASN
 - Team Cymru IP-to-origin-ASN and prefix enrichment
 - RIPE RISwhois observed prefix, origin ASN, and collector evidence
+- Published IRR route/route6 policy from allowlisted IRRd endpoints
 - RDAP IP allocation/assignment and ASN registration context
 
 ## Install
@@ -155,6 +157,7 @@ maintainers should use the [maintainer guide](AGENTS.md).
 | Netblock | `LookupNetblockContext` | `NetblockRecord` |
 | Team Cymru IP-to-ASN | `TeamCymruProvider.LookupIPContext` | `[]TeamCymruIPResult` |
 | RISwhois observed route | `RISWhoisProvider.LookupRouteContext` | `[]RISWhoisRouteResult` |
+| IRR published route policy | `IRRProvider.LookupRoutePolicyContext` | `[]IRRRoutePolicyResult` |
 | RDAP IP registration | `RDAPProvider.LookupIPContext` | `RDAPIPResult` |
 | RDAP ASN registration | `RDAPProvider.LookupASNContext` | `RDAPASNResult` |
 
@@ -239,6 +242,57 @@ Port 43 traffic is plaintext. Do not send an address or prefix to this
 third-party provider unless the calling application's privacy and data-handling
 policy allows it.
 
+## IRR published route-policy provider
+
+`IRRProvider` queries route and route6 objects that operators have published
+in an Internet Routing Registry. It accepts only a canonical CIDR network
+prefix and sends the IRRd RIPE-style exact query
+`-T route,route6 -x <prefix>`. Multiple published origins remain separate.
+The normalized result includes prefix, origin ASN, descriptions, maintainers,
+member-of sets, provider-supplied RPKI state where present, RPSL source, and
+explicit endpoint and query-mode provenance.
+The supported query shape follows the
+[IRRd RIPE-style query contract](https://irrd.readthedocs.io/en/stable/users/queries/whois/)
+used by services such as
+[ARIN IRR](https://www.arin.net/resources/manage/irr/) and
+[RADb](https://www.radb.net/support/informational/query.html).
+
+```go
+provider := pwhois.IRRProvider{
+	Endpoint: pwhois.IRREndpointARIN,
+}
+policies, err := provider.LookupRoutePolicyContext(
+	context.Background(),
+	"192.0.2.0/24",
+)
+```
+
+The zero value selects `IRREndpointRADb` (`whois.radb.net:43`). The other
+supported selections are `IRREndpointARIN` (`rr.arin.net:43`) and
+`IRREndpointNTT` (`rr.ntt.net:43`). These identifiers are an allowlist, not
+arbitrary host configuration: an unknown value returns `ErrInvalidInput`
+before dialing. Each lookup uses a five-second default timeout and the shared
+8 MiB response limit. It never retries, queries another registry, or
+automatically caches a result.
+
+IRR objects are published routing-policy statements. They do not prove current
+BGP propagation, resource ownership, geolocation, or sender identity. A
+provider's `rpki-ov-state` value is exposed as provider-supplied context; it
+does not replace independent Route Origin Authorization validation.
+`RISWhoisProvider` remains the distinct source for observed RIPE RIS routing
+evidence, and `RDAPProvider` remains the source for registration context.
+
+`IRRProvider.CacheKeySpec` separates endpoint identity, exact-match query mode,
+object types, protocol, parser, and result schema. The application must assign
+an explicit `SourceCachePolicy` for `IRRSource`. A conservative starting point
+for enrichment is a 1-hour successful-result TTL, 15-minute no-record TTL,
+1-minute rate-limit TTL, and at most 6 hours of successful stale data. Shorten
+or bypass that policy when recent policy changes matter.
+
+Port 43 traffic is plaintext. Only send a prefix to an IRR provider when the
+calling application's privacy and data-handling policy permits it, and respect
+each operator's published query limits.
+
 ## RDAP registration provider
 
 `RDAPProvider` performs HTTPS/JSON registration lookups for one IP address or
@@ -297,15 +351,16 @@ should shorten or bypass it.
 
 `SetDefaultValues` configures `whois.pwhois.org:43`. You can set `WhoisServer.Server` and `WhoisServer.Port` before calling `Connect`, but compatibility with alternative servers is not yet validated. Availability and rate limits are controlled by each server operator.
 
-`TeamCymruProvider`, `RISWhoisProvider`, and `RDAPProvider` are separate
-protocol-specific providers. Generic WHOIS and IRR endpoints are not
-drop-in-compatible with these clients, and arbitrary RDAP base URLs are not
-substitutes for the bootstrap/referral contract.
+`TeamCymruProvider`, `RISWhoisProvider`, `IRRProvider`, and `RDAPProvider` are
+separate protocol-specific providers. `IRRProvider` supports only its
+allowlisted endpoints and documented exact route/route6 query style. Generic
+WHOIS and other port-43 services are not drop-in-compatible, and arbitrary
+RDAP base URLs are not substitutes for the bootstrap/referral contract.
 
 ## Development
 
 The default checks are deterministic and do not contact public PWHOIS, Team
-Cymru, RISwhois, IANA bootstrap, or RDAP servers:
+Cymru, RISwhois, IRR, IANA bootstrap, or RDAP servers:
 
 ```shell
 go test ./...
@@ -332,15 +387,15 @@ The live tests depend on the public service's availability, response data, and r
 
 The explicit JSON-tagged data records (`WhoIs`, `BGPRoute`, `BGPRoutes`,
 `RegistryRecord`, `Registry`, `NetblockRecord`, `Netblock`, and
-`TeamCymruIPResult`, `RISWhoisObservation`, `RISWhoisRouteResult`, `RDAPEvent`,
-`RDAPEntityReference`, `RDAPRedactionIndicator`, `RDAPIPResult`, and
-`RDAPASNResult`) use normalized snake_case keys and are covered by serialization
-tests. Postal codes are text so leading zeros and alphanumeric values are
-preserved.
+`TeamCymruIPResult`, `RISWhoisObservation`, `RISWhoisRouteResult`,
+`IRRRoutePolicyResult`, `RDAPEvent`, `RDAPEntityReference`,
+`RDAPRedactionIndicator`, `RDAPIPResult`, and `RDAPASNResult`) use normalized
+snake_case keys and are covered by serialization tests. Postal codes are text
+so leading zeros and alphanumeric values are preserved.
 
-`WhoisServer`, `TeamCymruProvider`, `RISWhoisProvider`, `RDAPProvider`, bootstrap
-resolvers, and the channel response wrappers are connection/control types, not
-JSON output contracts.
+`WhoisServer`, `TeamCymruProvider`, `RISWhoisProvider`, `IRRProvider`,
+`RDAPProvider`, bootstrap resolvers, and the channel response wrappers are
+connection/control types, not JSON output contracts.
 
 ## License
 
