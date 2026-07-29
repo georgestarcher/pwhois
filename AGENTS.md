@@ -11,11 +11,12 @@ another application must start with
 
 - `pwhois` supports native PWHOIS IP, RouteView, registry, and netblock queries
   plus the explicit `TeamCymruProvider` IP-to-ASN and `RISWhoisProvider`
-  observed-route protocols and the `RDAPProvider` IP/ASN registration
-  protocol. It is not a generic WHOIS or IRR client. Changing only
-  `WhoisServer.Server` or a provider hostname does not establish compatibility
-  with another response format; add a source-specific implementation and tests
-  first.
+  observed-route protocols, the allowlisted `IRRProvider` exact route-policy
+  protocol, and the `RDAPProvider` IP/ASN registration protocol. It is not a
+  generic WHOIS or arbitrary-server IRR client. Changing only
+  `WhoisServer.Server` or a provider endpoint does not establish compatibility
+  with another response format; add a source-specific implementation and
+  tests first.
 - The exported Go API, JSON field names, README, and deterministic tests are
   consumer-facing contracts. Keep them aligned when behavior changes. Preserve
   the serialization conventions corrected in #22 and #25 deliberately; use
@@ -47,6 +48,10 @@ another application must start with
 - `RISWhoisProvider` is always explicit, uses longest-match IP or exact-match
   prefix queries, and never falls back. Its output is observed BGP evidence
   from RIPE RIS collectors, not RIR registration, geolocation, or IRR policy.
+- `IRRProvider` is always explicit, accepts canonical prefixes only, and sends
+  the documented exact route/route6 query to one allowlisted IRRd endpoint.
+  Its output is published routing policy, not observed BGP routing, RIR
+  registration, geolocation, ownership, or sender attribution.
 - `RDAPProvider` uses cached IANA bootstrap registries and bounded
   bootstrap-authorized HTTPS referrals. Normalized results omit complete
   jCards, personal names, contact details, addresses, event actors, raw JSON,
@@ -60,8 +65,9 @@ another application must start with
   pull request. Use `go test -race ./...` when changing concurrency or network
   behavior.
 - Default tests must be deterministic and must not contact public PWHOIS, Team
-  Cymru, RISwhois, IANA bootstrap, RDAP, or other provider servers. Native
-  PWHOIS live checks are opt-in: `go test -tags=integration ./...`.
+  Cymru, RISwhois, IRR, IANA bootstrap, RDAP, or other provider servers.
+  Native PWHOIS live checks are opt-in:
+  `go test -tags=integration ./...`.
 - Use reserved and synthetic addresses, ASNs, organizations, and response data
   in tests and documentation. Never commit live/private registry responses,
   contact data, credentials, local paths, or rate-limit artifacts.

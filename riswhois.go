@@ -300,7 +300,7 @@ func parseRISWhoisResponse(query risWhoisQuery, response, endpoint string, fetch
 		return nil, noRecordsError("RISwhois observed-route lookup")
 	}
 
-	objects, err := parseRISWhoisRPSL(response)
+	objects, err := parseRPSLObjects(response)
 	if err != nil {
 		return nil, malformedResponseError(err)
 	}
@@ -325,7 +325,7 @@ func parseRISWhoisResponse(query risWhoisQuery, response, endpoint string, fetch
 	return results, nil
 }
 
-func parseRISWhoisRPSL(response string) ([]map[string][]string, error) {
+func parseRPSLObjects(response string) ([]map[string][]string, error) {
 	objects := make([]map[string][]string, 0)
 	current := make(map[string][]string)
 	lastAttribute := ""
@@ -357,12 +357,12 @@ func parseRISWhoisRPSL(response string) ([]map[string][]string, error) {
 
 		colon := strings.IndexByte(line, ':')
 		if colon < 1 {
-			return nil, fmt.Errorf("parse RISwhois response line %d: expected RPSL attribute", lineNumber+1)
+			return nil, fmt.Errorf("parse RPSL response line %d: expected attribute", lineNumber+1)
 		}
 
 		name := strings.ToLower(strings.TrimSpace(line[:colon]))
-		if !validRISWhoisAttributeName(name) {
-			return nil, fmt.Errorf("parse RISwhois response line %d: invalid RPSL attribute name", lineNumber+1)
+		if !validRPSLAttributeName(name) {
+			return nil, fmt.Errorf("parse RPSL response line %d: invalid attribute name", lineNumber+1)
 		}
 		value := strings.TrimSpace(line[colon+1:])
 		current[name] = append(current[name], value)
@@ -372,7 +372,7 @@ func parseRISWhoisRPSL(response string) ([]map[string][]string, error) {
 	return objects, nil
 }
 
-func validRISWhoisAttributeName(value string) bool {
+func validRPSLAttributeName(value string) bool {
 	if value == "" {
 		return false
 	}
@@ -461,7 +461,7 @@ func normalizeRISWhoisRoute(query risWhoisQuery, attributes map[string][]string,
 		LastObserved:   lastObserved,
 		SeenAt:         seenAt,
 		RISPeerCount:   peerCount,
-		RPSLAttributes: copyRISWhoisAttributes(attributes),
+		RPSLAttributes: copyRPSLAttributes(attributes),
 		Source:         RISWhoisSource,
 		Endpoint:       endpoint,
 		FetchedAt:      fetchedAt,
@@ -530,7 +530,7 @@ func parseRISWhoisOptionalUint32(values []string, field string) (uint32, error) 
 	return uint32(value), nil
 }
 
-func copyRISWhoisAttributes(attributes map[string][]string) map[string][]string {
+func copyRPSLAttributes(attributes map[string][]string) map[string][]string {
 	copied := make(map[string][]string, len(attributes))
 	for name, values := range attributes {
 		copied[name] = append([]string(nil), values...)

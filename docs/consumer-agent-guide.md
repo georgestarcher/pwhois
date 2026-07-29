@@ -26,8 +26,10 @@ Read the selected `go.mod` version and the project README. Do not copy future
 APIs from open issues or assume a generic WHOIS, IRR, or RDAP server accepts
 the PWHOIS query and response format. Team Cymru support uses the separate
 `TeamCymruProvider`, and RISwhois support uses `RISWhoisProvider`; neither is
-a `WhoisServer` endpoint. Registration lookups use `RDAPProvider` with IANA
-bootstrap discovery rather than a caller-selected legacy WHOIS hostname.
+a `WhoisServer` endpoint. Published IRR policy uses `IRRProvider` with an
+allowlisted endpoint identifier and exact-prefix query. Registration lookups
+use `RDAPProvider` with IANA bootstrap discovery rather than a caller-selected
+legacy WHOIS hostname.
 
 ## Choose a lookup
 
@@ -53,6 +55,13 @@ and returns every matching `RISWhoisRouteResult`. IP queries request all
 longest-match origins; prefix queries request exact matches. These are
 observations from collected routing tables, not RIR registration, geolocation,
 or published IRR policy.
+
+For published route/route6 policy, use
+`IRRProvider.LookupRoutePolicyContext`. It accepts only a canonical CIDR
+network prefix and returns every exact `IRRRoutePolicyResult` from the selected
+allowlisted IRRd endpoint. Do not treat the result as proof of current BGP
+propagation, resource ownership, geolocation, sender identity, or independent
+RPKI validation.
 
 For registration/allocation context, use `RDAPProvider.LookupIPContext` or
 `LookupASNContext`. These return privacy-minimized `RDAPIPResult` or
@@ -96,6 +105,12 @@ fall back, or cache.
 Its zero value uses `riswhois.ripe.net:43`, a five-second timeout, and the
 shared 8 MiB response limit. It performs one query, preserves multiple origins,
 and does not automatically retry, fall back, or cache.
+
+`IRRProvider` uses the same owned-connection model. Its zero value selects
+`IRREndpointRADb`; `IRREndpointARIN` and `IRREndpointNTT` are also supported.
+Unknown endpoint identifiers return `ErrInvalidInput` before dialing. Every
+lookup sends one RIPE-style `-T route,route6 -x <prefix>` request and never
+retries, falls back, or caches automatically.
 
 `RDAPProvider` applies one deadline to bootstrap resolution and the final
 lookup. Its zero value uses the shared cached IANA bootstrap resolver, HTTPS,
@@ -150,6 +165,13 @@ for `RISWhoisSource`. A 15-minute success TTL, 5-minute no-record TTL,
 reasonable short-lived starting policy; callers needing current routing
 evidence should shorten or bypass it.
 
+`IRRProvider.CacheKeySpec` records the allowlisted endpoint identity, exact
+query mode, route/route6 object types, protocol, parser, and result schema.
+Configure a separate policy for `IRRSource`. A conservative starting point is
+a 1-hour success TTL, 15-minute no-record TTL, 1-minute rate-limit TTL, and
+6-hour maximum successful-stale window; applications sensitive to recent
+policy changes should shorten or bypass it.
+
 `RDAPProvider.IPCacheKeySpec` and `ASNCacheKeySpec` include the bootstrap
 identity, object type, referral bound, transport/target scope, privacy profile,
 parser, and result schema. Configure a separate policy for `RDAPSource`. A
@@ -168,10 +190,12 @@ response in `NormalizedResult`.
 `SetDefaultValues` configures `whois.pwhois.org:43`, the tested native PWHOIS
 default. `TeamCymruProvider` explicitly configures the separate Team Cymru
 protocol, and `RISWhoisProvider` explicitly configures RISwhois RPSL routing
-observations. `RDAPProvider` explicitly uses IANA bootstrap registries and
-bounded referral validation. A different hostname alone does not establish
-compatibility with a generic WHOIS or IRR service. Public providers control
-their availability and rate limits, and port 43 sends queries in plaintext.
+observations. `IRRProvider` explicitly selects one allowlisted IRRd endpoint
+and supports only exact route/route6 prefix queries. `RDAPProvider` explicitly
+uses IANA bootstrap registries and bounded referral validation. A different
+hostname alone does not establish compatibility with a generic WHOIS or
+port-43 service. Public providers control their availability and rate limits,
+and port 43 sends queries in plaintext.
 
 Keep credentials, private addresses, live registry responses, contact data,
 and rate-limit details out of source code, committed fixtures, and prompts. Use
@@ -181,8 +205,8 @@ policy permits it.
 
 ## Integration checklist
 
-1. Select native PWHOIS, Team Cymru, RISwhois, or RDAP based on the required
-   data source and semantics.
+1. Select native PWHOIS, Team Cymru, RISwhois, IRR, or RDAP based on the
+   required data source and semantics.
 2. Inspect the chosen module version, lookup method, and response type.
 3. Set application-appropriate timeout, response-size, and rate-limit policy.
 4. Classify every returned error with `errors.Is`, and test cancellation,

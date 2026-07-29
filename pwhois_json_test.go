@@ -78,6 +78,14 @@ func TestPublicJSONRecordContracts(t *testing.T) {
 			},
 		},
 		{
+			name:  "IRRRoutePolicyResult",
+			value: IRRRoutePolicyResult{},
+			keys: []string{
+				"descriptions", "endpoint", "endpoint_id", "fetched_at", "maintainers", "member_of",
+				"origin_asn", "prefix", "query", "query_mode", "rpki_state", "rpsl_source", "source",
+			},
+		},
+		{
 			name:  "RDAPEvent",
 			value: RDAPEvent{},
 			keys:  []string{"action", "date"},
