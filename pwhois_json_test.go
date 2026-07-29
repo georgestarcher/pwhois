@@ -64,6 +64,19 @@ func TestPublicJSONRecordContracts(t *testing.T) {
 				"ip", "origin_asns", "prefix", "registry", "source",
 			},
 		},
+		{
+			name:  "RISWhoisObservation",
+			value: RISWhoisObservation{},
+			keys:  []string{"collector", "observed_at", "peer"},
+		},
+		{
+			name:  "RISWhoisRouteResult",
+			value: RISWhoisRouteResult{},
+			keys: []string{
+				"descriptions", "endpoint", "fetched_at", "first_observed", "last_observed",
+				"origin_asn", "prefix", "query", "ris_peer_count", "rpsl_attributes", "seen_at", "source",
+			},
+		},
 	}
 
 	for _, test := range tests {
