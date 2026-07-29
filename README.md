@@ -182,6 +182,9 @@ and rate-limit policy explicit in the calling application.
 `TeamCymruProvider.CacheKeySpec` returns a source-, endpoint-, protocol-,
 parser-, and schema-aware identity for use with `CacheCoordinator`.
 
+`FetchedAt` records when this client received the response. It is not a claim
+about when the route was first observed by a collector.
+
 Port 43 traffic is plaintext. Do not send an address to this third-party
 provider unless the calling application's privacy and data-handling policy
 allows it.

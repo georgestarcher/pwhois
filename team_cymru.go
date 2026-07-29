@@ -371,13 +371,14 @@ func parseTeamCymruIPLine(line, endpoint string, fetchedAt time.Time) (TeamCymru
 	if len(result.OriginASNs) == 0 {
 		return TeamCymruIPResult{}, fmt.Errorf("missing origin ASN")
 	}
-	if _, _, err := net.ParseCIDR(prefixField); err != nil {
+	_, prefix, err := net.ParseCIDR(prefixField)
+	if err != nil {
 		return TeamCymruIPResult{}, fmt.Errorf("invalid BGP prefix")
 	}
 
 	result.Found = true
-	result.Prefix = prefixField
-	result.CountryCode = normalizeTeamCymruOptionalField(fields[3])
+	result.Prefix = prefix.String()
+	result.CountryCode = strings.ToUpper(normalizeTeamCymruOptionalField(fields[3]))
 	result.Registry = strings.ToLower(normalizeTeamCymruOptionalField(fields[4]))
 
 	allocated := normalizeTeamCymruOptionalField(fields[5])
