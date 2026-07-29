@@ -9,9 +9,13 @@ The cache API separates three responsibilities:
 3. `CacheCoordinator` applies source-specific freshness policy and coalesces
    concurrent fetches for the same canonical key.
 
-This is cache infrastructure, not a replacement high-level PWHOIS client. The
-existing channel-based lookup methods continue to require a caller-owned
-connection. Context-aware high-level lookup work remains tracked in issue #33.
+This is cache infrastructure, not an implicit wrapper around the high-level
+PWHOIS client. Applications may use `LookupIPContext`,
+`LookupRouteViewContext`, `LookupRegistryContext`, or
+`LookupNetblockContext` inside their context-aware fetch operation, but they
+must still select a source, cache policy, and normalized result explicitly.
+The deprecated channel-based lookup methods continue to require a caller-owned
+connection.
 
 ## Canonical keys and envelopes
 
@@ -83,9 +87,10 @@ to the backend.
 
 ## Example
 
-The fetch callback below is intentionally application-owned. It stands in for
-a context-aware provider operation; it must not be implemented by abandoning a
-legacy lookup goroutine when its context is canceled.
+The fetch callback below is intentionally application-owned. It can call one
+of the context-aware high-level lookup methods and normalize the typed result.
+It must not be implemented by abandoning a legacy lookup goroutine when its
+context is canceled.
 
 ```go
 cache := pwhois.NewMemoryCache()
