@@ -23,6 +23,14 @@ applications remain responsible for their chosen provider, privacy policy,
 rate-limit policy, data retention, and how results are displayed or acted
 upon. Port 43 queries are plaintext.
 
+Redis cache configuration is explicit. The module does not read Redis
+credentials from environment variables or files. Use TLS and ACL credentials
+for shared/networked Redis, provide a non-empty application namespace, and
+avoid logging Redis URLs, credentials, cache values, or private lookup inputs.
+A caller-supplied go-redis client remains part of the application's trust and
+lifecycle boundary. Redis values are bounded versioned normalized envelopes;
+do not store raw provider responses or sensitive RDAP contact fields in them.
+
 IRR lookups accept only the documented endpoint identifiers and reject unknown
 values before dialing. A custom `ContextDialer` receives the selected
 allowlisted destination and is part of the application's trust boundary.

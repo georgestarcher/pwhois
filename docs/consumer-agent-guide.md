@@ -185,6 +185,20 @@ for each source, version parser/result schemas in the key, inspect
 `CacheLookupResult.CacheError` and stale metadata, and never put a raw provider
 response in `NormalizedResult`.
 
+For process-local caching, use `NewMemoryCache`. For shared Redis storage, use
+`NewRedisCache` with an explicit non-empty key prefix and either address/URL
+configuration or a caller-owned go-redis client. Do not load Redis credentials
+implicitly in integration code or include Redis URLs in logs. Configure TLS
+and ACL credentials for networked deployments. `RedisCache.Close` closes only
+a client it created.
+
+The Redis key expires at the envelope's freshness deadline unless
+`StaleRetention` is configured. A non-zero retention only preserves the
+envelope for the coordinator's bounded stale-if-error decision; it does not
+extend freshness. Keep retention at or below the largest applicable
+`SourceCachePolicy.MaxStale`. Redis failures appear separately through
+`CacheLookupResult.CacheError` and must not be treated as provider failures.
+
 ## Server and data boundaries
 
 `SetDefaultValues` configures `whois.pwhois.org:43`, the tested native PWHOIS

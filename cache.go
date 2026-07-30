@@ -533,10 +533,17 @@ func (coordinator *CacheCoordinator) get(ctx context.Context, key string, spec C
 }
 
 func (coordinator *CacheCoordinator) validateEnvelope(key string, spec CacheKeySpec, entry CacheEnvelope) error {
-	if entry.Version != CacheEnvelopeVersion || entry.Key != key || entry.Source != spec.Source ||
-		entry.Endpoint != spec.Endpoint || entry.Protocol != spec.Protocol ||
+	if entry.Source != spec.Source || entry.Endpoint != spec.Endpoint || entry.Protocol != spec.Protocol ||
 		entry.NormalizedQuery != spec.NormalizedQuery || entry.ParserVersion != spec.ParserVersion ||
-		entry.ResultSchemaVersion != spec.ResultSchemaVersion || entry.FetchedAt.IsZero() || entry.ExpiresAt.IsZero() ||
+		entry.ResultSchemaVersion != spec.ResultSchemaVersion {
+		return ErrInvalidCacheEntry
+	}
+	return validateCacheEnvelopeStructure(key, entry, coordinator.maxEntryBytes)
+}
+
+func validateCacheEnvelopeStructure(key string, entry CacheEnvelope, maxEntryBytes int64) error {
+	if entry.Version != CacheEnvelopeVersion || entry.Key != key ||
+		entry.FetchedAt.IsZero() || entry.ExpiresAt.IsZero() ||
 		!entry.ExpiresAt.After(entry.FetchedAt) {
 		return ErrInvalidCacheEntry
 	}
@@ -552,16 +559,16 @@ func (coordinator *CacheCoordinator) validateEnvelope(key string, spec CacheKeyS
 	if strings.TrimSpace(entry.Provenance.Provider) == "" || strings.TrimSpace(entry.Provenance.Endpoint) == "" || strings.TrimSpace(entry.Provenance.Protocol) == "" {
 		return ErrInvalidCacheEntry
 	}
-	return coordinator.validateEntrySize(entry)
+	return validateCacheEnvelopeSize(entry, maxEntryBytes)
 }
 
-func (coordinator *CacheCoordinator) validateEntrySize(entry CacheEnvelope) error {
+func validateCacheEnvelopeSize(entry CacheEnvelope, maxEntryBytes int64) error {
 	encoded, err := json.Marshal(entry)
 	if err != nil {
 		return fmt.Errorf("%w: encode envelope: %v", ErrInvalidCacheEntry, err)
 	}
-	if int64(len(encoded)) > coordinator.maxEntryBytes {
-		return &CacheEntryTooLargeError{Limit: coordinator.maxEntryBytes}
+	if int64(len(encoded)) > maxEntryBytes {
+		return &CacheEntryTooLargeError{Limit: maxEntryBytes}
 	}
 	return nil
 }
