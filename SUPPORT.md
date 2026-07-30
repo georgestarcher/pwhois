@@ -5,8 +5,11 @@
 Start with the [README](README.md), [consumer integration guide](docs/consumer-agent-guide.md), and [Go package documentation](https://pkg.go.dev/github.com/georgestarcher/pwhois).
 
 For a question or bug report, include the exact module version, Go version,
-provider and endpoint, lookup type, expected result, actual result, and a minimal
-synthetic reproduction.
+provider and endpoint, lookup type, expected result, actual result, and a
+minimal synthetic reproduction. For Redis cache issues, also include the Redis
+and go-redis versions, topology, TLS/ACL mode, database number, cache policy,
+and non-sensitive namespace configuration. Never include the Redis URL,
+credentials, or cached values.
 
 ## Project scope
 

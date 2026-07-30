@@ -29,6 +29,11 @@ another application must start with
 - Do not add library stdout output. Return errors through the documented
   response types and keep logging, retries, orchestration, and policy in the
   calling application.
+- `RedisCache` is the optional shared backend for the versioned cache
+  envelope. Preserve its required namespace, bounded reads/writes, atomic TTL,
+  explicit credentials/TLS, caller-owned client boundary, and lack of raw
+  provider responses. Do not add implicit credential discovery or cross-key
+  batching.
 
 ## Network behavior
 
@@ -65,8 +70,9 @@ another application must start with
   pull request. Use `go test -race ./...` when changing concurrency or network
   behavior.
 - Default tests must be deterministic and must not contact public PWHOIS, Team
-  Cymru, RISwhois, IRR, IANA bootstrap, RDAP, or other provider servers.
-  Native PWHOIS live checks are opt-in:
+  Cymru, RISwhois, IRR, IANA bootstrap, RDAP, Redis, or other provider
+  servers. Redis tests use an in-process loopback-compatible server. Native
+  PWHOIS live checks are opt-in:
   `go test -tags=integration ./...`.
 - Use reserved and synthetic addresses, ASNs, organizations, and response data
   in tests and documentation. Never commit live/private registry responses,

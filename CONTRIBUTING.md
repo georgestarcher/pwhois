@@ -37,7 +37,9 @@ completed review, resolve actionable threads, and ensure CI is green.
 Use deterministic loopback tests and synthetic/reserved values. Do not commit
 live provider responses, organization or contact data, credentials, local
 paths, or rate-limit artifacts. Keep private experiments under ignored paths
-such as `testdata/private/`.
+such as `testdata/private/`. Redis backend tests must use the in-process
+Redis-compatible test server; required CI must not contact a real Redis
+deployment.
 
 ## Public API and release impact
 

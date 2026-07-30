@@ -176,5 +176,27 @@ A `Cache` backend must:
 
 `MemoryCache` is concurrency-safe and copies mutable JSON and provenance maps
 on reads and writes. It is intentionally process-local and non-persistent.
+
+`RedisCache` stores the same versioned envelope for sharing across processes.
+It requires a namespace, bounds values before writing and while reading, and
+uses atomic `SET` with expiration. Configure an address/URL plus explicit
+credentials and TLS, or pass a caller-owned go-redis client. The package never
+discovers credentials implicitly. The created-client path is a standalone
+Redis client; a caller-owned `redis.UniversalClient` may provide other
+topologies while retaining ownership and transport policy.
+
+The physical Redis TTL is `ExpiresAt - now + StaleRetention`. The default
+zero retention deletes the key when it stops being fresh. When
+`CachePolicyStaleIfError` must work across processes, configure a bounded
+retention no larger than the greatest relevant source `MaxStale`; the
+coordinator still treats the envelope as stale immediately at `ExpiresAt`.
+Redis misses return `found=false`. Transport failures, malformed or oversized
+envelopes, stale envelopes, and valid cached provider failures remain separate
+outcomes.
+
+`RedisCache` deliberately has no batch methods. Single-key operations preserve
+the canonical key, per-source TTL, provider-error class, and provenance without
+turning unrelated provider calls into one cache result.
+
 Distributed stampede protection is a backend/gateway concern; the coordinator
 only coalesces identical in-flight fetches inside one process.

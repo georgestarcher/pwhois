@@ -139,11 +139,61 @@ Cache keys include the source, endpoint, protocol, normalized query, options,
 parser version, and result schema version. Stored `CacheEnvelope` values
 contain bounded normalized JSON, timestamps, provider error class, and
 provenance; there is no raw-response field. `MemoryCache` is available for
-process-local use. File, gateway, and Redis implementations can satisfy the
-same `Cache` interface without changing lookup policy.
+process-local use. `RedisCache` provides optional shared Redis storage using
+the official [go-redis v9 client](https://github.com/redis/go-redis).
+File and gateway implementations can satisfy the same `Cache` interface
+without changing lookup policy.
 
 See the [cache contract guide](docs/cache-contract.md) for policy semantics,
 error handling, and an integration example.
+
+### Optional Redis cache backend
+
+`NewRedisCache` creates a namespaced Redis implementation of `Cache`. A
+non-empty `KeyPrefix` is required for shared deployments. Configure either an
+address or Redis URL, or supply a caller-owned `redis.UniversalClient`.
+Address configuration supports a database number, ACL username/password,
+dynamic credential provider, and cloned TLS configuration. The package never
+reads Redis credentials from environment variables or files.
+
+```go
+redisCache, err := pwhois.NewRedisCache(pwhois.RedisCacheConfig{
+	Address:    redisAddress,
+	Username:   redisUsername,
+	Password:   redisPassword,
+	TLSConfig:  redisTLSConfig,
+	KeyPrefix:  "my-service:pwhois",
+})
+if err != nil {
+	return err
+}
+defer redisCache.Close()
+```
+
+When the constructor creates the client, `Close` releases it. When `Client` is
+supplied, the caller retains ownership and `Close` is a no-op. Created clients
+use context-aware command deadlines, RESP2, one dial attempt, no command
+retries, and no client-identity command. Callers supplying a client own those
+transport choices.
+
+Every value is bounded on write and during read, uses the versioned
+`CacheEnvelope` JSON contract, and is stored atomically with a Redis TTL. By
+default, the physical Redis key expires at `CacheEnvelope.ExpiresAt`.
+`StaleRetention` may keep the envelope physically present for a bounded
+stale-if-error window; freshness still ends at `ExpiresAt`, and the configured
+retention should cover no more than the largest applicable source
+`MaxStale`. Misses, backend failures, invalid/corrupted envelopes, expired
+envelopes, and cached provider failures remain distinct through the existing
+cache and error contracts.
+
+The backend intentionally exposes only single-key `Get`, `Set`, and `Delete`
+operations. It does not add a batch API that could combine unrelated provider
+lookups or weaken per-key TTL and provenance semantics.
+
+Redis transport errors may identify a server address but the module does not
+include credentials or cached values in its own error text. Applications
+should still avoid logging Redis URLs, cache contents, or normalized private
+lookup inputs. Use TLS and Redis ACLs for networked/shared deployments.
 
 AI coding assistants integrating this module should use the
 [consumer-agent integration guide](docs/consumer-agent-guide.md). Repository
